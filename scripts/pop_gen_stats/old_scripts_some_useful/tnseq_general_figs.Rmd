@@ -1,0 +1,199 @@
+---
+title: "tnseq_general"
+author: "Talia_Karasov"
+date: "4/15/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(xtable)
+```
+
+## R Markdown
+
+
+```{r cars}
+general= read.table("~/work_main/abt6_projects9/tnseq/data/combined_datasets/Pseudmonadales/FW300_N1B4/pan_genome_general_stats.txt", sep=',', header=TRUE)
+general=general[general$gene1!=general$gene,]
+general=general[order(general$fit),]
+general$inverse_dist=1/(general$dist)*min(general$dist,na.rm=TRUE)
+
+g100=general[which(general$dist<10000),]
+interest=general[general$fit>0.0,]
+
+
+
+
+
+
+relate_pa = lm(general$fit~pa*inverse_dist, data=general)
+relate_inv = lm(general$fit~general$inverse_dist*general$pa)
+relate_sev = lm(general$fit~pa*ttree+pa*inverse_dist, data=general)
+#relate_non_inv =  lm(general$fit~general$dist*general$pa)
+
+AIC(relate_pa, relate_sev)
+#relate_inv is better
+
+pdf("~/Google Drive/tnseq_general/figures/fitness_corr_vs_pa_corr.pdf")
+scatter.smooth(general$fit, general$pa, pch=20, col="GREY", ylab="P/A Corr Coeff", xlab="Fitness Corr Coeff", span=0.01)
+dev.off()
+
+pdf("~/Google Drive/tnseq_general/figures/fitness_corr_vs_distance.pdf")
+g50=general[general$dist<50000,]
+scatter.smooth(g50$dist, g50$fit, pch=20, col="GREY", xlab="Distance (bp)", ylab="Fitness Corr Coeff", span=0.05,xlim=c(0,50000))
+dev.off()
+
+pdf("~/Google Drive/tnseq_general/figures/pa_corr_vs_distance.pdf")
+g50=general[general$dist<50000,]
+scatter.smooth(g50$dist, g50$pa, pch=20, col="GREY", xlab="Distance (bp)", ylab="P/A Corr Coeff", span=0.01,xlim=c(0,50000))
+dev.off()
+
+pdf("~/Google Drive/tnseq_general/figures/pa_distance_bar.pdf")
+pa_cut=quantile(general$pa, probs=c(0,0.05,.1,.2,.3,.4,.5,.6,.7,.9,.99,1))['99%']
+general_gt=general[general$dist<5000,]
+rest=general[general$dist>5000,]
+rest$val="lower"
+general_gt$val="higher"
+hm=rbind(rest, general_gt)
+plot(ecdf(general_gt$pa), col="RED", xlab="P/A Corr Coeff", main="cdf of P/A data for different distances")
+plot(ecdf(rest$pa),add=T)
+legend(x=.75, y=.4, fill=c("Black", "RED"), legend=c(">5000bp", "<5000bp") )
+dev.off()
+
+
+pdf("~/Google Drive/tnseq_general/figures/pa_distance_cdf.pdf")
+pa_cut=quantile(general$pa, probs=c(0,0.05,.1,.2,.3,.4,.5,.6,.7,.9,.99,1))['99%']
+general_gt=general[general$pa>pa_cut,]
+rest=general[general$pa<pa_cut,]
+rest$val="lower"
+general_gt$val="higher"
+hm=rbind(rest, general_gt)
+plot(ecdf(general_gt$dist), col="RED", xlab="Distance (bp)", main="cdf of P/A data for different distances",xlim=c(0,50000))
+plot(ecdf(rest$dist),add=T)
+legend(x=20000, y=.04, fill=c("Black", "RED"), legend=c("P/A Corr Coeff<70% (1%)", " >70%") )
+dev.off()
+
+```
+
+
+
+Comparing results between antibiotics
+
+```{r pressure, echo=FALSE}
+
+rsquared=function(fit_mat, col1, col2){
+  mod1 = lm(col2~col1, data =fit_mat)
+  modsum = summary(mod1)
+  r2 = modsum$adj.r.squared
+  mylabel = bquote(italic(R)^2 == .(format(r2, digits = 3)))
+  text(x = (max(col1)-2), y = (max(col2)-1), labels = mylabel, col="RED")
+}
+ecoli=read.table("~/work_main/abt6_projects9/tnseq/data/combined_datasets/Enterobacteriales/Ecoli_BW25113/fit_organism_Keio.txt", header=T, sep="/t")
+
+pdf("~/Google Drive/tnseq_general/figures/comparing_fitness_ecoli.pdf")
+par(mfrow=c(3,3))
+col1=ecoli$set1IT003.D.Glucose..C.
+col2=ecoli$set2IT045.LB
+plot(col1, col2, pch=20, xlab="D-Glucose", ylab="LB")
+rsquared(ecoli, col1, col2)
+
+col1=ecoli$set1IT075.L.Serine..N.
+col2=ecoli$set1IT079.L.Glutamine..N.
+plot(col1, col2, pch=20, xlab="L.Serine", ylab="L.Glutamine")
+rsquared(ecoli, col1, col2)
+
+col1=ecoli$set2IT060.Tetracycline.0.0008.mg.ml
+col2=ecoli$set2IT062.Spectinomycin.0.00625.mg.ml
+plot(col1, col2, pch=20, xlab="Tet 0.0008mg/mL", ylab="Spec 0.00625 mg/mL")
+rsquared(ecoli, col1, col2)
+
+col1=ecoli$set2IT060.Tetracycline.0.0008.mg.ml
+col2=ecoli$set1IT003.D.Glucose..C.
+plot(col1, col2, pch=20, xlab="Tet 0.0008mg/mL", ylab="D.Glucose")
+rsquared(ecoli, col1, col2)
+
+col1=ecoli$set2IT060.Tetracycline.0.0008.mg.ml
+col2=ecoli$set2IT059.Tetracycline.0.0004.mg.ml
+plot(col1, col2,xlab="Tet 0.0008mg/mL", ylab="Tet 0.0004mg/mL", pch=20 )
+rsquared(ecoli, col1, col2)
+
+col1=ecoli$set2IT060.Tetracycline.0.0008.mg.ml
+col2=ecoli$set2IT058.Chloramphenicol.0.005.mg.ml
+plot(col1, col2,xlab="Tet 0.0008mg/mL", ylab="Chloramphenicol 0.005mg/mL", pch=20 )
+rsquared(ecoli, col1, col2)
+
+col1=ecoli$set2IT060.Tetracycline.0.0008.mg.ml
+col2=ecoli$set2IT065.Carbenicillin.0.008.mg.ml
+plot(col1, col2,xlab="Tet 0.0008mg/mL", ylab="Carbenicillin 0.0008mg/mL", pch=20 )
+rsquared(ecoli, col1, col2)
+
+col1=ecoli$set2IT060.Tetracycline.0.0008.mg.ml
+col2=ecoli$set6IT049.Nalidixic.0.006.mg.ml
+plot(col1, col2, pch=20, xlab="Tet 0.0008mg/mL", ylab="Nalidixic0.006mg/mL")
+rsquared(ecoli, col1, col2)
+
+col1=ecoli$set2IT060.Tetracycline.0.0008.mg.ml
+col2= ecoli$set2IT033.Doxycycline.hyclate.0.001.mg.ml
+plot(col1,col2, pch=20, xlab="Tet 0.0008mg/mL", ylab="Doxycycline0.001mg/mL")
+rsquared(ecoli, col1, col2)
+
+dev.off()
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+
+```{R}
+require(gridExtra)
+ps_fit= read.table("~/work_main/abt6_projects9/tnseq/data/combined_datasets/Pseudmonadales/FW300_N1B4/pseudomonas_fit.csv", sep=",", header=T, row.names = 1)
+colors <- rev(heat.colors(101)) 
+zcolor <- colors[(z - min(z))/diff(range(z))*100 + 1] 
+par(mfrow=c(2,2))
+pdf("~/Google Drive/tnseq_general/figures/comparing_fitness_pseudomonas.pdf")
+
+plot1=ggplot(data=ps_fit, aes(set3IT015.Tetracycline.0.0004.mg.ml,set3IT016.Spectinomycin.0.025.mg.ml, col=ttree)) +
+    geom_point() + xlab("Tetracycline 0.0004mg/mL") + ylab("Spectinomycin 0.025mg/mL")
+
+plot2=ggplot(data=ps_fit, aes(set3IT015.Tetracycline.0.0004.mg.ml,set5IT033.4C.survival..24.hrs, col=ttree)) +
+    geom_point() + xlab("Tetracycline 0.0004mg/mL") + ylab("4C survival")
+
+plot3=ggplot(data=ps_fit, aes(set4IT068.L.Histidine..C.,set4IT075.L.Leucine..C., col=ttree)) +
+    geom_point() + xlab("L. Histidine") + ylab("L. Leucine")
+
+plot4=ggplot(data=ps_fit, aes(set2IT045.LB,set3IT009.LB, col=ttree)) +
+    geom_point() + xlab("LB") + ylab("LB")
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
+dev.off()
+
+
+try=ps_fit[,c("set4IT068.L.Histidine..C.", "ttree")]
+try_o=try[order(try$set4IT068.L.Histidine..C.),]
+boxplot(try_o[c(1:200), 'ttree'],try_o[c(3852:4052), 'ttree'] )
+hist(try_o[c(1:200),'ttree'], breaks=100, main="", xlab="Time in Tree")
+hist(try_o[c(3852:4052),'ttree'], breaks=100, add=TRUE, border="RED", alpha=0.5)
+pdf("~/Google Drive/tnseq_general/figures/pseudo_l_hist.pdf", height=10, width=5)
+par(mfrow=c(2,1))
+plot(ecdf(try_o[c(1:200),'ttree']), xlab="Time in tree", main="Time in tree of Bottom and Top 5% of Fitness values")
+plot(ecdf(try_o[c(3852:4052),'ttree']), add=T, col="RED")
+
+try_t=try[order(try$ttree),]
+plot(ecdf(try_t[c(1:200),'set4IT068.L.Histidine..C.']), xlab="Fitness", main="Fitness of Bottom and Top 5% of ttree values")
+plot(ecdf(try_t[c(3852:4052),'set4IT068.L.Histidine..C.']), add=T, col="RED")
+dev.off()
+
+```
+
+
+Compare between genera
+```{R}
+
+tet=read.table("~/work_main/abt6_projects9/tnseq/data/fitness_datasets/fitness_tables/Tetracycline_mapping.csv", header=T, row.names = 1, sep=",")
+glucose= read.table("~/work_main/abt6_projects9/tnseq/data/fitness_datasets/fitness_tables/Glucose_mapping.csv", header=T, row.names = 1, sep=",")
+par(mfrow=c(3,1))
+plot(glucose[,3], glucose[,1])
+plot(glucose[,2], glucose[,3])
+plot(tet[,2], tet[,3])
+
