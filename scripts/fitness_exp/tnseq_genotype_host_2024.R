@@ -32,7 +32,9 @@ high_enough <- which(colSums(count_table_p)>=25000)
 count_table_filter <-count_table_p[,high_enough]
 sample_order_filter <- sample_order_p[high_enough,]
 
-
+# Let's write the count_table and sample_order to file
+write_rds(sample_order_filter, "~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/full_experiments/all_sample_order_filter_6_12_2024.rds")
+write_rds(count_table_filter, "~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/full_experiments/all_count_table_filter_6_12_2024.rds")
 
 
 #########
