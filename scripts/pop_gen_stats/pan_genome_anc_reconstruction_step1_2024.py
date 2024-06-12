@@ -20,7 +20,7 @@ import pickle
 
 
 # path_to_pangenome_dir='/ebio/ag-neher/share/users/wding/panX-refseq/data/Pseudomonadales'#sys.argv[1]
-path_to_pangenome_dir='/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/panX_data_the50/MySpecies_50_subset/
+path_to_pangenome_dir='/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/panX_data_the50/MySpecies_50_subset/'
 # path_to_pangenome_dir='/ebio/ag-neher/share/users/wding/panX-refseq/data/Enterobacteriales/'
 #t = path_to_pangenome_dir + '/vis/strain_tree.nwk'
 
