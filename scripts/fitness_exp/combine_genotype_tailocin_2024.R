@@ -7,6 +7,8 @@ setwd("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/tailocin/")
 
 # Talia's tailocin tnseq results
 tb_p25 <- read.csv("./all_genes_table_tailocin_6_11_2024.csv", sep=",")
+tb_p25 <- tb_p25[, c("ID", "logFC", "AveExpr", "t", "P.Value", "adj.P.Val")]
+colnames(tb_p25) <- c("ID", "logFC_tailocin", "AveExpr_tailocin", "t_tailocin", "P.Value_tailocin", "adj.P.Val_tailocin")
 
 #read in the metacsv with all the experiments
 sample_order_filter  <- readRDS("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/full_experiments/all_sample_order_filter_6_12_2024.rds")
@@ -36,3 +38,31 @@ colnames(res_eyach) <- c("baseMean_Ey", "log2FoldChange_Ey", "pvalue_Ey", "padj_
 
 #Now we want to convert Talia B's tnseq result file to the general ortholog mappings
 ortho <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthologues_dc3000_p25_c2_7_2022.txt", header = T, sep= "\t")
+counts_table = p25_22_counts
+ortho_dict <- ortho[,3]
+names(ortho_dict) <- ortho[,1]
+reverse_dict_BJ_to_WP_DAK <- names(ortho_dict)
+names(reverse_dict) <- ortho_dict
+
+#add the BJ to DAK mapping. I need an ortho file with the DAKCFMEO correspondence
+
+#in the meantime we will just look at ones that have ortholog in DC3000
+BJ_val <- tb_p25$ID
+conversion <- reverse_dict[BJ_val]
+tb_p25$DC_ID <- conversion
+tb_converted <- tb_p25 %>% filter(conversion!="NA")
+#rownames(tb_converted) <- tb_converted$DC_ID
+
+#Now let's merge this fitness file with the res_eyach file
+res_eyach <- data.frame(res_eyach)
+res_eyach$DC_ID_r <- rownames(res_eyach)
+eyach_tailocin <- cbind(res_eyach[tb_converted$DC_ID,], tb_converted)
+
+write.table(eyach_tailocin, "~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/tailocin/tailocin_plant_fitness_612_2024.csv", quote = FALSE, row.names = TRUE, col.names = TRUE, sep="\t")
+
+# Graph logFC
+ggplot(eyach_tailocin, aes(x=log2FoldChange_Ey, y=logFC_tailocin))+
+  geom_point() + theme_bw()
+
+
+
