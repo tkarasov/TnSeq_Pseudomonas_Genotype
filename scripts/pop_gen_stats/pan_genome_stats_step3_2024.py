@@ -58,7 +58,7 @@ def fit_object(file_name):
 
 
 # path_to_pangenome_dir = '/ebio/ag-neher/share/users/wding/panX-refseq/data/Pseudomonadales'#sys.argv[1]
-path_to_pangenome_dir = '/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/panX_data_the50/'
+path_to_pangenome_dir='/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/panX_data_the50/MySpecies_50_subset/'
 clusters = path_to_pangenome_dir + "/allclusters_final.tsv"
 # tnseq_genome = list(SeqIO.parse(os.popen("ls | grep _cds_from_genomic.fna").read().strip(), "fasta"))
 
