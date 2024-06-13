@@ -45,8 +45,8 @@ def infer_gene_gain_loss(path, rates=[1.0, 1.0]):
     fasta = path_to_pangenome_dir + "/geneClusterx/genePresence.aln"
 
     # instantiate treetime with custom GTR
-    t = ta.TreeAnc(nwk, gtr=gain_loss_model, verbose=2)
-    # fix leaves names since Bio.Phylo interprets numeric leaf names as confidence
+    t = treeanc(nwk, gtr=gain_loss_model, verbose=2)
+    # fix leaf names since Bio.Phylo interprets numeric leaf names as confidence
     for leaf in t.tree.get_terminals():
         if leaf.name is None:
             leaf.name = str(leaf.confidence)
