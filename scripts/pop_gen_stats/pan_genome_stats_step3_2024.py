@@ -63,10 +63,31 @@ clusters = path_to_pangenome_dir + "/allclusters_final.tsv"
 # tnseq_genome = list(SeqIO.parse(os.popen("ls | grep _cds_from_genomic.fna").read().strip(), "fasta"))
 
 # tnseq_panx = pickle.load(open("tnseq_panx_mapped_dict.cpk", 'rb')) '''I think this is the deprecated mapping'''
-gene_mapping = [line.strip().split(", ") for line in open("/ebio/abt6_projects9/tnseq/tnseq_function/fitness_tables/gammaproteobacteria_mappings.txt").readlines()]
+#gene_mapping = [line.strip().split(", ") for line in open("/ebio/abt6_projects9/tnseq/tnseq_function/fitness_tables/gammaproteobacteria_mappings.txt").readlines()]
 
 # note that the gene_mapping file starts at 1 whereas the panX files start at 0. I am subtracting 1 but must check that this mapping is correct.
-gene_map_dict = {(int(line[0]) - 1): line[1] for line in gene_mapping}
+#gene_map_dict = {(int(line[0]) - 1): line[1] for line in gene_mapping}
+#Load gene identities
+geneID = pickle.load(open(path_to_pangenome_dir + "/geneID_to_description.cpk", 'rb'))
+gene_ID_seq_mapping = pickle.load(open(path_to_pangenome_dir +"geneID_to_geneSeqID.cpk", 'rb'))
+
+#allclusters is the gene orthology mappings
+allclusters = [line.strip().split() for line in open(path_to_pangenome_dir + "allclusters_final.tsv", 'r').readlines()]
+# I want to keep the listing for p25.c2 (if there is one) for each line
+p25_c2 = {}
+i=0
+for line in allclusters:
+    record="NA"
+    for rec in line:
+        if 'p25.C2' in str(rec):
+            record = rec.split("|")[1]
+            p25_c2[i]=record
+    if record == "NA":
+        p25_c2[i]="NA"
+    i=i+1
+
+
+
 
 # Nucleotide diversity of gene
 genediv = pickle.load(open(path_to_pangenome_dir + "/geneCluster/gene_diversity.cpk", 'rb'))
@@ -75,19 +96,19 @@ genediv = pickle.load(open(path_to_pangenome_dir + "/geneCluster/gene_diversity.
 
 # Deletion/Duplication events pickle.load(open(path_to_pangenome_dir+"/geneCluster/dt_geneEvents.cpk"))
 uncode_gene_events = pickle.load(open(path_to_pangenome_dir + "/geneCluster/dt_geneEvents.cpk", 'rb'))
-gene_events = {gene_map_dict[k]: v for k, v in uncode_gene_events.items()}
+#gene_events = {gene_map_dict[k]: v for k, v in uncode_gene_events.items()}
 
 # time_spent in tree
-uncode_ts_tree = pickle.load(open("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/branch_gene.cpk", 'rb')) #maybe branch_length
+uncode_ts_tree = pickle.load(open("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/branch_length.cpk", 'rb')) #was branch_gene before
 ts_tree = {gene_map_dict[k]: v for k, v in uncode_ts_tree.items()}
 
 tnseq_stats = {}
-for gene in gene_map_dict.values():
+for gene in p25_c2():
     tnid = gene
     pgid = 'NULL'
     pggc = 'NULL'
     pgnum = 'NULL'
-    pident = gene_events[gene]
+    pident = uncode_gene_events[gene]
     ttree = ts_tree[gene]
     gene_div = float(genediv[gene])
     gene_ev = float(gene_events[gene])
@@ -97,6 +118,7 @@ for gene in gene_map_dict.values():
 
 full_tag_pd = pd.read_csv('/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/full_tag_pd.csv', sep=",", index_col=1)
 not_measured = {}
+# this is where I stopped off. 
 
 full_tag_pd = full_tag_pd.append(pandas.Series(name="Time in tree"))
 full_tag_pd = full_tag_pd.append(pandas.Series(name="Genetic_Diversity"))
