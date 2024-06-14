@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-'''the goal of this script is to do ancestral state reconstruction of the loss and gain of genes along the provided phylogenetic tree. TaliaK repurposed script in 6/2024'''
+'''the goal of this script is to do ancestral state reconstruction of the loss and gain of genes along the provided phylogenetic tree. TaliaK repurposed script in 6/2024. Working on 6/14/2024'''
 import os
 import sys
 import copy
@@ -9,7 +9,7 @@ from collections import defaultdict
 sys.path.append('./')
 from treetime import *
 #from treetime.treetime import treeanc as ta
-#import treetime.treeanc as ta
+import treetime.treeanc as ta
 from treetime.gtr import GTR
 #from treetime import io: didn't work on 3.27.2019 but didn't seem necesseary
 from treetime import seq_utils
@@ -20,7 +20,7 @@ import pickle
 
 
 # path_to_pangenome_dir='/ebio/ag-neher/share/users/wding/panX-refseq/data/Pseudomonadales'#sys.argv[1]
-path_to_pangenome_dir='/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/panX_data_the50/MySpecies_50_subset/'
+path_to_pangenome_dir=r"/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/panX_data_the50/MySpecies_50_subset/"
 # path_to_pangenome_dir='/ebio/ag-neher/share/users/wding/panX-refseq/data/Enterobacteriales/'
 #t = path_to_pangenome_dir + '/vis/strain_tree.nwk'
 
@@ -42,10 +42,10 @@ def infer_gene_gain_loss(path, rates=[1.0, 1.0]):
     # path_to_pangenome_dir='/ebio/ag-neher/share/users/wding/panX-refseq/data/Enterobacteriales/'
     # path_to_pangenome_dir='/ebio/ag-neher/share/users/wding/panX-refseq/data/Pseudomonadales'#sys.argv[1]
     nwk = path_to_pangenome_dir + "/vis/strain_tree.nwk"
-    fasta = path_to_pangenome_dir + "/geneClusterx/genePresence.aln"
+    fasta = path_to_pangenome_dir + "/geneCluster/genePresence.aln"
 
     # instantiate treetime with custom GTR
-    t = treeanc(nwk, gtr=gain_loss_model, verbose=2)
+    t = ta.TreeAnc(nwk, gtr=gain_loss_model, verbose=2)
     # fix leaf names since Bio.Phylo interprets numeric leaf names as confidence
     for leaf in t.tree.get_terminals():
         if leaf.name is None:
@@ -108,7 +108,7 @@ def calc_branch_length_in_tree(t):
                 len_dict[gene] = len_dict[gene] + branch
 
         # dump out branch lengths
-        handle = open("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/", "wb")
+        handle = open("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/branch_length.cpk", "wb")
         pickle.dump(len_dict, handle)
         handle.close()
 

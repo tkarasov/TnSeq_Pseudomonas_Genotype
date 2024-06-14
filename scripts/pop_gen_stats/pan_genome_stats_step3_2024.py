@@ -58,7 +58,7 @@ def fit_object(file_name):
 
 
 # path_to_pangenome_dir = '/ebio/ag-neher/share/users/wding/panX-refseq/data/Pseudomonadales'#sys.argv[1]
-path_to_pangenome_dir='/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/panX_data_the50/MySpecies_50_subset/'
+path_to_pangenome_dir="/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/panX_data_the50/MySpecies_50_subset/"
 clusters = path_to_pangenome_dir + "/allclusters_final.tsv"
 # tnseq_genome = list(SeqIO.parse(os.popen("ls | grep _cds_from_genomic.fna").read().strip(), "fasta"))
 
@@ -69,16 +69,16 @@ gene_mapping = [line.strip().split(", ") for line in open("/ebio/abt6_projects9/
 gene_map_dict = {(int(line[0]) - 1): line[1] for line in gene_mapping}
 
 # Nucleotide diversity of gene
-genediv = pickle.load(open(path_to_pangenome_dir + "/geneClusterx/gene_diversity.cpk", 'rb'))
+genediv = pickle.load(open(path_to_pangenome_dir + "/geneCluster/gene_diversity.cpk", 'rb'))
 
 # GC content
 
 # Deletion/Duplication events pickle.load(open(path_to_pangenome_dir+"/geneCluster/dt_geneEvents.cpk"))
-uncode_gene_events = pickle.load(open(path_to_pangenome_dir + "/geneClusterx/dt_geneEvents.cpk", 'rb'))
+uncode_gene_events = pickle.load(open(path_to_pangenome_dir + "/geneCluster/dt_geneEvents.cpk", 'rb'))
 gene_events = {gene_map_dict[k]: v for k, v in uncode_gene_events.items()}
 
 # time_spent in tree
-uncode_ts_tree = pickle.load(open("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/branch_gene.cpk", 'rb'))
+uncode_ts_tree = pickle.load(open("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/branch_gene.cpk", 'rb')) #maybe branch_length
 ts_tree = {gene_map_dict[k]: v for k, v in uncode_ts_tree.items()}
 
 tnseq_stats = {}
