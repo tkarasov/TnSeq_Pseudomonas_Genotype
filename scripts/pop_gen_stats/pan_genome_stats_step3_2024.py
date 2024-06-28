@@ -1,12 +1,14 @@
 #!/usr/bin/env python
-'''the goal of this script is to take the pan genome for a given bacterial group, and to assign diversity statistics to each ortholog group'''
+'''the goal of this script is to take the pan genome for a given bacterial group, and to assign diversity statistics to each ortholog group. Looking good with full_tag_pd output file on 6/2/2024'''
 
 import sys
 import os
 import pickle
 import ete3
 import pandas as pd
-from Bio import SeqIO
+from Bio import *
+from Bio import Phylo
+#from newick import read
 
 # now build object for every gene in tnseq genome
 
@@ -71,6 +73,7 @@ clusters = path_to_pangenome_dir + "/allclusters_final.tsv"
 geneID = pickle.load(open(path_to_pangenome_dir + "/geneID_to_description.cpk", 'rb'))
 gene_ID_seq_mapping = pickle.load(open(path_to_pangenome_dir +"geneID_to_geneSeqID.cpk", 'rb'))
 
+
 #allclusters is the gene orthology mappings
 allclusters = [line.strip().split() for line in open(path_to_pangenome_dir + "allclusters_final.tsv", 'r').readlines()]
 # I want to keep the listing for p25.c2 (if there is one) for each line
@@ -83,14 +86,39 @@ for line in allclusters:
             record = rec.split("|")[1]
             p25_c2[i]=record
     if record == "NA":
-        p25_c2[i]="NA"
+        #p25_c2[i]="NA"
+        p25_c2[i]=line[0].split("|")[1]
     i=i+1
 
 
 
 
-# Nucleotide diversity of gene
+# Nucleotide diversity of gene. For some reason this is substantially longer (~3000 genes that is the)
 genediv = pickle.load(open(path_to_pangenome_dir + "/geneCluster/gene_diversity.cpk", 'rb'))
+
+# Build Gene Cluster mappings. This is mapping the GC number to the gene name in p25.c2. We need to iterate through the whole folder of vis/geneCluster, look in every file ending in aa_aln.fa.gz  and find the genes in the different strains associated with that gene cluster
+
+GC_dict = {}
+# DACKMO:GC
+for filename in os.listdir(path_to_pangenome_dir+"/vis/geneCluster/"):
+    if filename=="strain_tree.nwk":
+        pass
+    elif filename.endswith(".nwk"):
+        GC=filename.strip(".nwk")
+        tree = Phylo.read(path_to_pangenome_dir+"/vis/geneCluster/"+filename, "newick")
+        for leaf in tree.get_terminals(): 
+            GC_dict[leaf.name.split("|")[1].split("-")[0]] = GC
+    else:
+        pass
+
+# Now connect the gene name to the divergene
+GC_name_divergence = {}
+for key,value in GC_dict.items():
+    GC_name_divergence[key]=genediv[value]
+
+
+
+
 
 # GC content
 
@@ -99,77 +127,45 @@ uncode_gene_events = pickle.load(open(path_to_pangenome_dir + "/geneCluster/dt_g
 #gene_events = {gene_map_dict[k]: v for k, v in uncode_gene_events.items()}
 
 # time_spent in tree
+
+
 uncode_ts_tree = pickle.load(open("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/branch_length.cpk", 'rb')) #was branch_gene before
-ts_tree = {gene_map_dict[k]: v for k, v in uncode_ts_tree.items()}
+gene_map_dict = {p25_c2[item]:uncode_ts_tree[item] for item in uncode_ts_tree.keys()}
+ts_tree = gene_map_dict #{gene_map_dict[k]: v for k, v in uncode_ts_tree.items()}
 
 tnseq_stats = {}
-for gene in p25_c2():
-    tnid = gene
-    pgid = 'NULL'
-    pggc = 'NULL'
-    pgnum = 'NULL'
-    pident = uncode_gene_events[gene]
-    ttree = ts_tree[gene]
-    gene_div = float(genediv[gene])
-    gene_ev = float(gene_events[gene])
-    tnseq_stats[tnid] = tnseq_gene(tnid, pgid, pggc, pgnum, ttree, gene_ev, gene_div)
+for number,gene in p25_c2.items():
+    if gene.startswith("DAKCFMEO_"):
+        print(gene)
+        tnid = gene
+        pgid = 'NULL'
+        pggc = 'NULL'
+        pgnum = 'NULL'
+        pident = uncode_gene_events[number]
+        ttree = ts_tree[gene]
+        gene_div = float(GC_name_divergence[gene])
+        gene_ev = float(uncode_gene_events[number])
+        tnseq_stats[tnid] = tnseq_gene(tnid, pgid, pggc, pgnum, ttree, gene_ev, gene_div)
 
 # Now attach the gene object information to the large fitness output file. Everything in one place!
 
-full_tag_pd = pd.read_csv('/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/full_tag_pd.csv', sep=",", index_col=1)
+full_tag_pd = pd.DataFrame(index=[gene for gene in tnseq_stats], columns = ["Time in tree", "Genetic_Diversity", "Num_gene_events", "GC_content"])
+#read_csv('/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/full_tag_pd.csv', sep=",", index_col=1)
 not_measured = {}
-# this is where I stopped off. 
 
-full_tag_pd = full_tag_pd.append(pandas.Series(name="Time in tree"))
-full_tag_pd = full_tag_pd.append(pandas.Series(name="Genetic_Diversity"))
-full_tag_pd = full_tag_pd.append(pandas.Series(name="Num_gene_events"))
-full_tag_pd = full_tag_pd.append(pandas.Series(name="GC_content"))
 
 # This takes a few hours interactively
 for gene in tnseq_stats:
     print(gene)
     try:
-        full_tag_pd[gene].loc["Time in tree"] = tnseq_stats[gene].ttree
-        full_tag_pd[gene].loc["Genetic_Diversity"] = tnseq_stats[gene].gene_div
-        full_tag_pd[gene].loc["Num_gene_events"] = tnseq_stats[gene].gene_ev
-        full_tag_pd[gene].loc["GC_content"] = tnseq_stats[gene].pggc
+        full_tag_pd["Time in tree"].loc[gene] = tnseq_stats[gene].ttree
+        full_tag_pd["Genetic_Diversity"].loc[gene] = tnseq_stats[gene].gene_div
+        full_tag_pd["Num_gene_events"].loc[gene] = tnseq_stats[gene].gene_ev
+        full_tag_pd["GC_content"].loc[gene] = tnseq_stats[gene].pggc
     except KeyError:
         not_measured[gene] = tnseq_stats[gene]
 
 
-full_tag_pd.to_csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/full_tag_pd_with_fitness.csv")
+full_tag_pd.to_csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/full_tag_pd.csv")
 
 
-'''
-for key, value in tnseq_panx.iteritems():
-    try:
-        tnid = key.split(":")[1]
-    except IndexError:
-        print("ERROR")
-        tnid = tnseq_panx[key][0].split("_")[2]
-    pgid = value[0]
-    pggc = value[1]
-    pgnum = value[2]
-    pident = gene_events[pgnum]
-    ttree = ts_tree[pgnum]
-    gene_div = genediv[pggc]
-    gene_ev = gene_events[pgnum]
-    tnseq_stats[tnid] = tnseq_gene(tnid, pgid, pggc, pgnum, ttree, gene_ev, gene_div)
-
-# Fitness info
-# fit = pandas.read_table("fit_organism_pseudo1_N1B4.txt", index_col =2)
-fit = pandas.read_table("NZ_CP009273_fit_organism_Keio.txt", index_col=2)
-
-'''
-
-
-'''
-fit.index = [str(rec) for rec in fit.index]
-fit['ttree'] = [tnseq_stats[str(rec)].ttree for rec in fit.index]
-fit['gene_ev'] = [tnseq_stats[rec].gene_ev for rec in fit.index]
-fit['gene_div'] = [tnseq_stats[rec].gene_div for rec in fit.index]
-
-
-with open("/ebio/abt6_projects9/tnseq/tnseq_function/data/Keio_tnseq_panx_fitness_data.cpk", 'wb') as handle:
-    pickle.dump(fit, handle)
-'''
