@@ -120,7 +120,7 @@ for key,value in GC_dict.items():
 
 
 
-# GC content
+# GC content -- Not done yet.
 
 # Deletion/Duplication events pickle.load(open(path_to_pangenome_dir+"/geneCluster/dt_geneEvents.cpk"))
 uncode_gene_events = pickle.load(open(path_to_pangenome_dir + "/geneCluster/dt_geneEvents.cpk", 'rb'))
@@ -136,6 +136,7 @@ ts_tree = gene_map_dict #{gene_map_dict[k]: v for k, v in uncode_ts_tree.items()
 tnseq_stats = {}
 for number,gene in p25_c2.items():
     if gene.startswith("DAKCFMEO_"):
+        #right now we are only adding the orthologs that have a p25.c2 gene in them
         print(gene)
         tnid = gene
         pgid = 'NULL'
