@@ -50,50 +50,86 @@ sample_order_filter[sample_order_filter$plant == "ctrl",]$plant <- samps
 #now with the filtered dataset, make deseq object
 dds <- DESeqDataSetFromMatrix(countData = count_table_filter, 
                               colData = sample_order_filter, design = ~ plant + 
-                                experiment + treatment + plant:treatment +plant:time_point +treatment:time_point)
+                                experiment + treatment + plant:treatment +plant:time_point+treatment:time_point)
 #dds$plant <- factor(dds$plant, levels = c("ctrl","col_0", "ey15_2"))
+dds <- estimateSizeFactors(dds)
 
 
+#this experiment does the LRT test to compare whether the time interaction with bacterial treatment have different effects.
+dds_red <- DESeq(dds, test="LRT", reduced = ~ plant + 
+                   experiment + treatment + plant:treatment +plant:time_point)
+res_red <- results(dds_red)
 
-
-#Let's do some basic visualization
-ntd <- normTransform(dds)
-select <- order(rowMeans(counts(dds,normalized=TRUE)),
+#Let's do some basic visualization. a variance stabilizing transformation is useful for when doing clustering methods
+ntd <- normTransform(dds_red)
+select <- order(rowMeans(counts(dds_red,normalized=TRUE)),
                 decreasing=TRUE)[1:100]
-df <- as.data.frame(colData(dds)[,c( "plant")])
-pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
-         cluster_cols=FALSE, annotation_col=df)
+df <- as.data.frame(colData(dds_red)[,c( "treatment")])
+pdf("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/figs/heatmap_strain_background_effect.pdf")
+pheatmap(assay(ntd)[select,], cluster_rows=, show_rownames=FALSE,
+         cluster_cols=TRUE, annotation_col=df)
+dev.off()
 
 
+# Let's watch the counts change
+fiss <- plotCounts(dds_red, which.min(res_red$padj), 
+             intgroup = c("time_point", "treatment"), returnData = TRUE)
+#most significant gene is WP_005771391.1 which is a glycosyl transferase family 2
+# WP_005771391.1	DAKCFMEO_03457	BJEIHDPM_00932	PSPTO_RS05640
+#BJEIHDPM_00932;product=putative glycosyltransferase
+#in 2022 experiment is absent across all samples. In 2023, has more appreciable numbers but goes to zero at the t3 timepoint.  
+
+pdf("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/figs/WP_005771391.1_genetic_background.pdf")
+ggplot(fiss, aes(x=time_point, y=count,group=treatment, color = treatment)) + 
+  geom_point() + stat_summary(fun.y=median, geom="line") + scale_y_log10()
+dev.off()
+
+# this vignette (#9 https://master.bioconductor.org/packages/release/workflows/vignettes/rnaseqGene/inst/doc/rnaseqGene.html#time-course-experiments) was useful for figuring out which genes are important for the genetic background.
 
 #perform the median of ratios method of normalization
 dds <- estimateSizeFactors(dds)
 dds <- DESeq(dds)
 resultsNames(dds) # lists the coefficients
-res <- results(dds, name="treatment_p25c2_vs_dc3000")
+res <- results(dds, name="treatmentp25c2.time_pointt3")
 
 # or to shrink log fold changes association with condition:
-res_bac <- lfcShrink(dds, coef="treatment_p25c2_vs_dc3000", type="apeglm")
+res_bac <- lfcShrink(dds, coef="treatmentp25c2.time_pointt3", type="apeglm")
 plotMA(res_bac, ylim = c(-5,5))
+table(res$padj<0.01)
+
+
+
+############# From here we are going to narrow our dds to the p25.c2 samples and look at the dynamics of p25.c2 because this is the one for which we have
+keep<-which(sample_order_filter$treatment!="dc3000")
+count_table_p25<-count_table_filter[,keep]
+sample_order_p25 <- sample_order_filter[keep,]
+dds_p25 <- DESeqDataSetFromMatrix(countData = count_table_p25, 
+                              colData = sample_order_p25, design = ~ plant + 
+                                experiment  + plant:time_point)
+
+#perform the median of ratios method of normalization
+dds_p25 <- estimateSizeFactors(dds_p25)
+dds_p25 <- DESeq(dds_p25)
+resultsNames(dds_p25) # lists the coefficients
 
 
 ### What percentage of genes are differentially important depending on the host genotype
 # This is a contrast between Ey1.5 and Col-0 asking for genes that changed in importance based on host genetic background.
-contrast <- c("plant_col_0_vs_ctrl", "plant_ey15_2_vs_ctrl")
-res_plant <- results(dds, contrast=list(contrast))
+contrast <- c("plantcol_0.time_pointt3", "plantey15_2.time_pointt3")
+res_plant <- results(dds_p25, contrast=list(contrast))
 table(res_plant$padj<0.01)
 
 # FALSE  TRUE 
-# 3226   345
-#9.66% of genes
+# 3306   254
+#7.13% of genes show a genotypic-specific effect
 
-### What percentage of genes are important dependent on the strain background
-res_plant <- results(dds, name = "treatment_p25c2_vs_dc3000")
-table(res_plant$padj<0.01)
-
-# FALSE  TRUE 
-# 1685  2030 
-# 54.6% of the genome
+# ### What percentage of genes are important dependent on the strain background
+# res_plant <- results(dds, name = "treatment_p25c2_vs_dc3000"). This analysis was completely wrong based off of not doing the correct change from T0 to T3. Differences in starting concentrations in the two libraries undoubtably had a strong effect. 
+# table(res_plant$padj<0.01)
+# 
+# # FALSE  TRUE 
+# # 1685  2030 
+# # 54.6% of the genome
 
 ##################
 # Now let's do a comparison with orthologs that are unique to DC3000
