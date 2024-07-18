@@ -55,7 +55,7 @@ dds <- DESeqDataSetFromMatrix(countData = count_table_filter,
 dds <- estimateSizeFactors(dds)
 
 
-#this experiment does the LRT test to compare whether the time interaction with bacterial treatment have different effects.
+#this experiment does the LRT test to compare whether the time interaction with bacterial treatment have different effects. *** Note again that this is comparing the two models and asking which genes does it matter whether there is a different interaction term depending on which strain is used in the comparison.
 dds_red <- DESeq(dds, test="LRT", reduced = ~ plant + 
                    experiment + treatment + plant:treatment +plant:time_point)
 res_red <- results(dds_red)
@@ -63,10 +63,10 @@ res_red <- results(dds_red)
 #Let's do some basic visualization. a variance stabilizing transformation is useful for when doing clustering methods
 ntd <- normTransform(dds_red)
 select <- order(rowMeans(counts(dds_red,normalized=TRUE)),
-                decreasing=TRUE)[1:100]
+                decreasing=TRUE)[1:134]
 df <- as.data.frame(colData(dds_red)[,c( "treatment")])
 pdf("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/figs/heatmap_strain_background_effect.pdf")
-pheatmap(assay(ntd)[select,], cluster_rows=, show_rownames=FALSE,
+pheatmap(assay(ntd)[select,], cluster_rows=TRUE, show_rownames=FALSE, show_colnames = FALSE,
          cluster_cols=TRUE, annotation_col=df)
 dev.off()
 
@@ -99,7 +99,7 @@ table(res$padj<0.01)
 
 
 
-############# From here we are going to narrow our dds to the p25.c2 samples and look at the dynamics of p25.c2 because this is the one for which we have
+############# From here we are going to narrow our dds to the p25.c2 samples and look at the dynamics of p25.c2 because this is the one for which we have the best data.
 keep<-which(sample_order_filter$treatment!="dc3000")
 count_table_p25<-count_table_filter[,keep]
 sample_order_p25 <- sample_order_filter[keep,]
@@ -120,8 +120,8 @@ res_plant <- results(dds_p25, contrast=list(contrast))
 table(res_plant$padj<0.01)
 
 # FALSE  TRUE 
-# 3306   254
-#7.13% of genes show a genotypic-specific effect
+# 3317   243
+#6.8% of genes show a genotypic-specific effect
 
 # ### What percentage of genes are important dependent on the strain background
 # res_plant <- results(dds, name = "treatment_p25c2_vs_dc3000"). This analysis was completely wrong based off of not doing the correct change from T0 to T3. Differences in starting concentrations in the two libraries undoubtably had a strong effect. 
