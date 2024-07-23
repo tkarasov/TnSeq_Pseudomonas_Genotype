@@ -97,28 +97,36 @@ set.seed(1234)
 # Run the model
 df <- fit_exp %>% select(selection_Eyach, KB_Pto, MM_Pto, SA_Pto, variance, Time.in.tree, Genetic_Diversity, Num_gene_events)
 rownames(df) <- fit_exp$Row.names
+df2 <- df %>% filter(is.na(selection_Eyach)==FALSE)
+
+a <- createFolds(df2$selection_Eyach, list=FALSE)
+data_train <- df2[a,]
+data_test <- df2[-a,]
+
 
 
 rf_default <- train(selection_Eyach~.,
                     data = data_train,
                     method = "rf",
-                    metric = "Accuracy",
-                    trControl = trControl)
+                    metric = "RMSE",
+                    trControl = trControl,
+                    na.action = na.exclude)
 # Print the results
 print(rf_default)
 
 # search best mtry
 set.seed(1234)
-tuneGrid <- expand.grid(.mtry = c(1: 10))
+tuneGrid <- expand.grid(.mtry = c(1: 7))
 rf_mtry <- train(selection_Eyach~.,
                  data = data_train,
                  method = "rf",
-                 metric = "Accuracy",
+                 metric = "RMSE",
                  tuneGrid = tuneGrid,
                  trControl = trControl,
                  importance = TRUE,
                  nodesize = 14,
-                 ntree = 300)
+                 ntree = 300,
+                 na.action = na.exclude)
 print(rf_mtry)
 
 # search the best maxnodes
@@ -126,16 +134,17 @@ store_maxnode <- list()
 tuneGrid <- expand.grid(.mtry = best_mtry)
 for (maxnodes in c(5: 15)) {
   set.seed(1234)
-  rf_maxnode <- train(survived~.,
+  rf_maxnode <- train(selection_Eyach~.,
                       data = data_train,
                       method = "rf",
-                      metric = "Accuracy",
+                      metric = "RMSE",
                       tuneGrid = tuneGrid,
                       trControl = trControl,
                       importance = TRUE,
                       nodesize = 14,
                       maxnodes = maxnodes,
-                      ntree = 300)
+                      ntree = 300,
+                      na.action = na.exclude)
   current_iteration <- toString(maxnodes)
   store_maxnode[[current_iteration]] <- rf_maxnode
 }
@@ -146,16 +155,17 @@ summary(results_mtry)
 store_maxtrees <- list()
 for (ntree in c(250, 300, 350, 400, 450, 500, 550, 600, 800, 1000, 2000)) {
   set.seed(5678)
-  rf_maxtrees <- train(survived~.,
+  rf_maxtrees <- train(selection_Eyach~.,
                        data = data_train,
                        method = "rf",
-                       metric = "Accuracy",
+                       metric = "RMSE",
                        tuneGrid = tuneGrid,
                        trControl = trControl,
                        importance = TRUE,
                        nodesize = 14,
                        maxnodes = 24,
-                       ntree = ntree)
+                       ntree = ntree,
+                       na.action = na.exclude)
   key <- toString(ntree)
   store_maxtrees[[key]] <- rf_maxtrees
 }
