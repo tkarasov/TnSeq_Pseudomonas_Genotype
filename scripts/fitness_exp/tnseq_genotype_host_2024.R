@@ -1,7 +1,7 @@
 library(DESeq2)
 library(tidyverse)
 library(pheatmap)
-
+library(readr)
 # This script reads in the rds experiments for the four experiments Done by Effie in 12/2022 and 3/2023 with Rb-Tnseq and does basic deseq comparison trials
 
 setwd("~/Google\ Drive/My\ Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
@@ -13,9 +13,9 @@ setwd("~/Google\ Drive/My\ Drive/Utah_Professorship/projects/Tnseq/compiled_tria
 # p25_23 <- readRDS("../full_experiments/p25c2_23.rds")
 
 
-#read in the metacsv with all the experiments
-all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data//full_experiments/all_p25_dc_axenic_6_2024.csv", header = TRUE)
-
+#read in the metacsv with all the experiments. I'm confused. I think we have a better one. I don't know where this came from. 
+#all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data//full_experiments/all_p25_dc_axenic_6_2024.csv", header = TRUE)
+all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/", header = TRUE)
 
 # I think it's best if we just compare internally within the experiments and then look at how replicable the results are
 

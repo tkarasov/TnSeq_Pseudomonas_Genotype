@@ -1,22 +1,26 @@
 # This script takes the gene conservation information from the panX output and combines it with the in planta growth information.
 library(tidyr)
 library(dplyr)
-library(gpplot2)
+library(ggplot2)
 library(lme4)
 library(randomForest)
 library(caret)
+library(matrixStats)
 
 
 #this is the output from running the python evolutionary genetics scripts on the panX output
 conservation = read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/full_tag_pd.csv", row.names = 1)
 
-#this is data file for the output from the tnseq experiment. 
+#this is data file for the output from the tnseq experiment for p25.c2 in the tailocin plus also some of the plant genotype info
 eyach_tailocin <- read.table("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/tailocin/tailocin_plant_fitness_selection_717_2024.csv", header = TRUE)
+
+dc3000_eyach <- read.table("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/in_planta_rbtnseq_p25c2_dc3000/in_planta_may23/dc3000_may23/dc3000_sample_info_may23.txt", header = TRUE)
 
 #I need to rename the gene names in conservation file
 orthologs <- read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", 
-                        header = TRUE,
+   header = TRUE,
                         sep = ",", row.names = 2)
+                        
 orthologs[orthologs$DC3000=="",]$DC3000<-NA
 
 
@@ -72,16 +76,18 @@ exp_sub$ratio <- ratio
 # merge expression info with fit_con
 fit_exp <- merge(fit_con, exp_sub, by.x="WP", by.y="WP", all.x = TRUE)
 
-model2 <- lm(data=fit_exp, selection_Eyach ~ Time.in.tree + KB_Pto +Genetic_Diversity+ Col.0_Pto*variance )
+model2 <- lm(data=fit_exp, selection_Eyach ~ Time.in.tree + KB_Pto +Genetic_Diversity+ Col.0_Pto )
 summary(model2)
 anova(model2)
 
+
+# write an output file that will then be fed into a random forest model
 
 # The expression level in planta seems to be the best predictor of the selection coefficient in planta. 
 # What about if I look at genes that are differentially express
 cor.test(exp$Col.0_Pto, exp$KB_Pto)
 cor.test(exp$Col.0_Pto, exp$MM_Pto)
-# The minimal media did not seem to be a better predictor of gene expression in the plant than did the 
+# The minimal media did not seem to be a better predictor of gene expression in the plant than did the  KB
 # it is not clear to me why the ratio of Col0/KB was not a better predictor than the overall variance. 
 
 
@@ -109,7 +115,7 @@ rf_default <- train(selection_Eyach~.,
                     data = data_train,
                     method = "rf",
                     metric = "RMSE",
-                    trControl = trControl,
+                    #trControl = trControl,
                     na.action = na.exclude)
 # Print the results
 print(rf_default)
