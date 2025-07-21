@@ -13,7 +13,7 @@ library(edgeR)
 
 setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
 
-
+##########################################################################
 ### Read in full counts table ###
 all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
 all_exp$Sample <- with(all_exp, paste(treatment, plant, time_point, position, experiment, sep = "_"))
@@ -71,7 +71,6 @@ group <- interaction(metadata$strain, metadata$plant, metadata$time_point)
 
 
 
-
 # Transform counts with voom. The following takes the dge (subsetted or not, the design and a boolean for whether or not the experiment random effect should be taken into account)
 run_voom <- function(dge, design, experiment=FALSE){
   v <- voom(dge, design, plot = TRUE)
@@ -90,7 +89,7 @@ run_voom <- function(dge, design, experiment=FALSE){
     v <- voom(dge, design)
     fit <- lmFit(v, design)
   } 
-  # Empirical Bayes moderation
+  # Empirical Bayes moderation for both
   fit <- eBayes(fit)
   return(list(v=v, fit=fit))
 }
@@ -108,8 +107,8 @@ filter_meta_counts <- function(column_remove, param_remove, counts, metadata){
 
 summarize_overlap_between_terms <- function(fit, coef1, coef2, pval_cutoff = 0.05) {
   # Get topTable results for both coefficients
-  tt1 <- topTable(fit, coef = coef1, number = Inf, p.value = pval_cutoff)
-  tt2 <- topTable(fit, coef = coef2, number = Inf, p.value = pval_cutoff)
+  tt1 <- topTable(fit, coef = coef1, number = Inf, p.value = pval_cutoff, adjust.method = "BH")
+  tt2 <- topTable(fit, coef = coef2, number = Inf, p.value = pval_cutoff,  adjust.method = "BH")
   
   # Gene names
   genes1 <- rownames(tt1)
@@ -157,7 +156,9 @@ results_table <- function(fit){
 ##########################################################################
 ######### First do the analysis with all
 # design matrix
-design <- model.matrix(~ treatment * time_point * plant + experiment, data = metadata)
+
+design <- model.matrix(~ treatment * time_point * plant, data = metadata)
+# experiment is included as a random effect only
 dge <- DGEList(counts = counts)
 dge <- calcNormFactors(dge)
 res <- run_voom(dge, design, experiment = TRUE)
@@ -168,35 +169,31 @@ result_full <- summarize_overlap_between_terms(
   coef1 = "time_pointt3",
   coef2 = "treatmentp25c2:time_pointt3"
 )
+# 172 significant coef1, 130 significant coef2, num_overlap 64
+#238 genes total are significant
 
+# If I include experiment as a fixed effect, get coef1=177, coef2=122, num_overlap=65
 ######### Second do the analysis with Exp 2
 filtered2 <- filter_meta_counts("experiment", "exp_0001", counts, metadata)
 design2 <- model.matrix(~ treatment * time_point * plant, data = filtered2$new_meta)
 dge2 <- DGEList(counts = filtered2$new_counts)
 dge2 <- calcNormFactors(dge2)
-res <- run_voom(dge2, design2, experiment= FALSE)
-v2 <- res$v
-fit2 <- res$fit
+res2 <- run_voom(dge2, design2, experiment= FALSE)
+v2 <- res2$v
+fit2 <- res2$fit
 
 ######### Now compare the results between the full and fit2
-result_full <- summarize_overlap_between_terms(
+result_full2 <- summarize_overlap_between_terms(
   fit2,
   coef1 = "time_pointt3",
   coef2 = "treatmentp25c2:time_pointt3"
 )
+# 147 coef1, 84 coef2, 47 overlap
 
 
-# # let's make fit1. No this doesn't work because don't have good controls in experiment 1
-# filtered1 <- filter_meta_counts("experiment", "exp_0002", counts, metadata)
-# design1 <- model.matrix(~ treatment * time_point * plant, data = filtered1$new_meta)
-# dge1 <- DGEList(counts = filtered2$new_counts)
-# dge1 <- calcNormFactors(dge1)
-# res1 <- run_voom(dge, design1, experiment= FALSE)
-# v1 <- res1$v
-# fit1 <- res1$fit
 
-######### The first experiment was kind of a mess, so I don't want to do it specifically 
-# But let's look at the correspondence in lfc values between the two.
+######### The first experiment was kind of a mess, so I don't want to do it specifically because doesn't have good controls
+# But let's look at the correspondence in lfc values between the full model and just exp2.
 extract_timepoint_logfc_per_experiment <- function(voom_obj, metadata, experiment_col, design_formula) {
   library(limma)
   
@@ -237,8 +234,11 @@ extract_timepoint_logfc_per_experiment <- function(voom_obj, metadata, experimen
 
 # Assuming you ran voom with a design like this:
 # ~ treatment * time_point * plant + experiment
-design1 <- model.matrix(~ treatment * time_point * plant + experiment, data = metadata)
-res <- run_voom(dge, design1, experiment = FALSE)
+design_full <- design
+# design <- model.matrix(~ treatment * time_point * plant, data = metadata)
+res <- run_voom(dge, design_full, experiment = TRUE)
+v <- res$v
+fit <- res$fit
 
 # Extract LFC for interaction term "time_pointt3" for each experiment
 lfc_timepoint <- extract_timepoint_logfc_per_experiment(
@@ -253,14 +253,18 @@ lfc_timepoint <- extract_timepoint_logfc_per_experiment(
 
 # === Parameters ===
 coef_name <- "time_pointt3"
-fdr_cutoff <- 0.01
+fdr_cutoff <- 0.05
 
 # === 1. Identify significant genes ===
 sig_full <- topTable(fit, coef = coef_name, number = Inf, adjust.method = "BH")
 sig_full_ids <- rownames(sig_full)[sig_full$adj.P.Val < fdr_cutoff]
+length(sig_full_ids)
+#this is 273. I ran again and now it's 139. OK it's 139 again. OK now it's 172. Ive changed the FDR to 0.05. But 172 is consistent with above 
 
 sig_exp2 <- topTable(fit2, coef = coef_name, number = Inf, adjust.method = "BH")
 sig_exp2_ids <- rownames(sig_exp2)[sig_exp2$adj.P.Val < fdr_cutoff]
+length(sig_exp2_ids)
+#this is 126. Still 126. Nope now 147 wtf
 
 # === 2. Merge logFC and label categories ===
 sig_union <- union(sig_full_ids, sig_exp2_ids)
@@ -292,14 +296,21 @@ color_map <- c(
   
   # === Parameters ===
   coef_name <- "time_pointt3"
-  fdr_cutoff <- 0.01
+  fdr_cutoff <- 0.05
   
   # === 1. Identify significant genes ===
   sig_full <- topTable(fit, coef = coef_name, number = Inf, adjust.method = "BH")
   sig_full_ids <- rownames(sig_full)[sig_full$adj.P.Val < fdr_cutoff]
+  length(sig_full_ids)
+  # 139 genes are in this sig_full_ids. Now it's 172 after correcting for FDR=0.05 BH
+  
+  
   
   sig_exp2 <- topTable(fit2, coef = coef_name, number = Inf, adjust.method = "BH")
   sig_exp2_ids <- rownames(sig_exp2)[sig_exp2$adj.P.Val < fdr_cutoff]
+  length(sig_exp2_ids)
+  #126 genes are in this group. Now it's 147 in this group after correcting for FDR=0.05.
+  
   
   # === 2. Merge logFC and label significance categories ===
   sig_union <- union(sig_full_ids, sig_exp2_ids)
@@ -362,7 +373,7 @@ pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/U
   
 dev.off()
 
-#### OK now we have a subset of genes we can follow. Those that show a significant fitness effect in DC3000 over time. What I want to do with them is ask questions about how many of them are sensitive to the strain genetic background and how many of them are sensitive to the plant genetic background. And I want good graphics to relay this information.
+#### OK now we have a subset of genes we can follow. Those that show a significant fitness effect in DC3000 over time. We will continue to look at the full model genes. What I want to do with them is ask questions about how many of them are sensitive to the strain genetic background and how many of them are sensitive to the plant genetic background. And I want good graphics to relay this information.
 
 summarize_background_sensitivity_with_3way <- function(
     fit,
@@ -370,7 +381,7 @@ summarize_background_sensitivity_with_3way <- function(
     coef_strain_time = "treatmentp25c2:time_pointt3",
     coef_plant_time = "time_pointt3:plantey15_2",
     coef_3way = "treatmentp25c2:time_pointt3:plantey15_2",
-    fdr_cutoff = 0.01,
+    fdr_cutoff = 0.05,
     plot_type = c("barplot", "upset"),
     plot = TRUE
   ) {
@@ -483,16 +494,28 @@ gene_summary <- summarize_background_sensitivity_with_3way(
   coef_strain_time = "treatmentp25c2:time_pointt3",
   coef_plant_time = "time_pointt3:plantey15_2",
   coef_3way = "treatmentp25c2:time_pointt3:plantey15_2",
-  fdr_cutoff = 0.01,
+  fdr_cutoff = 0.05,
   plot_type = "upset"  # or "upset" if you have ComplexUpset
   )
 
 # the plotting of the upset plot isn't working well. But only the strain genetic background had an effect.
 # So I really just want to make a bar plot
 tot_sig <- length(which(gene_summary$Time==TRUE))
+#139 genes. Now 172 after FDR=0.05
 strain_sig <- length(which(gene_summary$Strain_Time==TRUE))
+# 45 genes. Now 68 genes after FDR=0.05
 plant_sig <- length(which(gene_summary$Plant_Time==TRUE))
+# 0 genes. Still 0 after FDR=0.05
+
 threeway_sig <- length(which(gene_summary$Three_Way==TRUE))
+#0 genes. Still 0 after FDR=0.05
+
+
+# write the gene_summary table to file to be used in the gene_ontology_contrasts_script
+write.csv(gene_summary, file = "gene_sig_summary.csv", row.names = FALSE,  quote = FALSE)
+
+
+
 
 # Now make a stacked barplot showing the proportion that are significant
 # Compute non-significant counts
@@ -544,9 +567,9 @@ dge <- DGEList(counts = counts)
 dge <- calcNormFactors(dge)
 
 # Step 2: Create design matrix with interaction
-design <- model.matrix(~ treatment * time_point + plant + experiment, data = metadata)
+design <- model.matrix(~ treatment * time_point + plant , data = metadata)
 
-# Step 3: Run voom with duplicateCorrelation to adjust for experiment
+# Step 3: Run voom with duplicateCorrelation to adjust for experiment. We've done this already many times. Just making sure we are using the right model
 v <- voom(dge, design, plot = TRUE)
 corfit <- duplicateCorrelation(v, design, block = metadata$experiment)
 v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consensus)
@@ -560,7 +583,8 @@ p25c2_lfc <- dc3000_lfc + lfc_mat[, "treatmentp25c2:time_pointt3"]
 
 # Step 5: Identify significant genes in DC3000 (main effect)
 tt <- topTable(fit, coef = "time_pointt3", number = Inf, adjust.method = "BH")
-sig_genes <- rownames(tt)[tt$adj.P.Val < 0.01]
+sig_genes <- rownames(tt)[tt$adj.P.Val < 0.05]
+#sig_genes now has 273
 
 # Step 6: Assemble dataframe
 lfc_df <- data.frame(
@@ -611,7 +635,7 @@ dev.off()
 
 
 # Extract top genes for the interaction term
-top_interaction <- topTable(fit, coef = "treatmentp25c2:time_pointt3", number = Inf)
+top_interaction <- topTable(fit, coef = "treatmentp25c2:time_pointt3", number = Inf, adjust.method = "BH")
 
 # Build summary table for all model terms
 results_summary <- lapply(colnames(fit$coefficients), function(term) {
@@ -633,6 +657,7 @@ results_summary <- lapply(colnames(fit$coefficients), function(term) {
 
 # Combine into a dataframe
 results_summary <- do.call(rbind, results_summary)
+# I think the calculations in results summary are not correct.
 
 # Print and export to CSV
 print(results_summary)
@@ -891,7 +916,7 @@ library(GGally)
 library(dplyr)
 df = combined_logFC
 df <- df %>%
-  mutate(significant = fdr_fullmodel < 0.01)
+  mutate(significant = fdr_fullmodel < 0.05)
 # Select only the result columns
 result_cols <- df[,c("dc3000_col0", "dc3000_ey15_2", "p25c2_col0",  "p25c2_ey15_2")]
 
@@ -905,7 +930,7 @@ p <- ggpairs(plot_data,
 # Add color scale
 p <- p + scale_color_manual(
   values = c("TRUE" = "navy", "FALSE" = "orange"),
-  labels = c("FALSE" = "Not significant", "TRUE" = "FDR < 0.01"),
+  labels = c("FALSE" = "Not significant", "TRUE" = "FDR < 0.05"),
   name = "Significance"
 )
 

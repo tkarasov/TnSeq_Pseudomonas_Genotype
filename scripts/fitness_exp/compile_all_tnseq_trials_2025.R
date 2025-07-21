@@ -1,4 +1,4 @@
-# In December 2022 and May 2023 Effie completed two experiments with DC3000 and p25.c2 Rb-Tnseq grown in two ecotypes. This file is building a list for each experiment which is then written to an rds.Modified this script in 4/2025 to have the correct ortholog file.
+# In December 2022 and May 2023 Effie completed two experiments with DC3000 and p25.c2 Rb-Tnseq grown in two ecotypes. This file is building a list for each experiment which is then written to an rds. Modified this script in 4/2025 to have the correct ortholog file.
 
 
 # May 2 2025. The dictionaries were messed up, and so were putting out incorrect values for column names. I think I fixed this today and so the all_exp is the complete dataset (I so hope!)
