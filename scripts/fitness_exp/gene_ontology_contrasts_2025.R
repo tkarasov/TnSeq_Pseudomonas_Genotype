@@ -131,6 +131,7 @@ go_sig <- go_sig %>%
 
 
 compute_go_enrichment <- function(sig_q8, universe_q8, GO_dict) {
+  # this function takes a list of target genes and a universe of genes and detects go_enrichments
   go_df <- stack(GO_dict)
   colnames(go_df) <- c("GO", "uniprot")
   
@@ -237,4 +238,74 @@ font_import(pattern = "Arial", prompt = FALSE)
 loadfonts(device = "pdf")
 ggsave("go_enrichment_comparison.tiff", combined_plot, width = 12, height = 6, dpi = 300, compression = "lzw")
 
+#############
+# There is some sort of weird peak in the histogram of fitness values for DC3000 around +1.0. Which genes are these?
+lfc_df <- read.csv("logFCDC3000logFCp25c2_7_2025.csv", header = TRUE)
+lfc_dc_1 <- lfc_df %>% filter(logFC_DC3000>.75) %>% filter(logFC_DC3000<1.75) 
 
+lfc1_Q <- universe %>% filter(Gene %in% lfc_dc_1$Gene) %>% pull(uniprot)
+lfc_universe <- universe %>% pull(uniprot)
+lfc1_GO_enrich <- compute_go_enrichment(lfc1_Q, lfc_universe, go_dict)
+plot_go_enrichment(lfc1_GO_enrich)
+# only thing that is significant is cytoplasm. ??
+
+#I would like to make a heatmap for the genes associated with virulence
+# Search GO.db for terms containing "virulence" or "pathogenesis"
+all_go <- Term(GOTERM)
+virulence_go <- grep("virulence|pathogenesis|hrp|tox|effector|coronatine|avr|secretion|type III secretion system", all_go, value = TRUE, ignore.case = TRUE)
+
+# Extract GO IDs
+virulence_go_ids <- names(virulence_go)
+# Add some known T3SS GO terms
+t3ss_go_ids <- c("GO:0030257", "GO:0009289", "GO:0005576")
+
+# Combine with your original virulence list
+combined_go_ids <- union(virulence_go_ids, t3ss_go_ids)
+# Subset genes that are classified with one of these go ids
+# go_mappings Entry column is the q value and the Gene.Ontology.IDs is the GO ids separated by semicolons
+library(stringr)
+filtered_go_mappings <- go_mappings %>%
+  filter(str_detect(Gene.Ontology.IDs, str_c(combined_go_ids, collapse = "|")))
+
+# now I want to do a heatmap for those of those genes that are in the lfc dataframe
+vir_genes <- universe %>% filter(uniprot %in% filtered_go_mappings$Entry) 
+vir_lfc <- lfc_df %>% filter(Gene %in% vir_genes$Gene)
+vir_lfc$uniprot <- vir_genes[vir_genes$Gene %in% vir_lfc$Gene, c("uniprot")]
+#vir_lfc$Protein.names <- filtered_go_mappings %>% filter(uniprot %in% vir_lfc$uniprot ) %>% pull(Protein.names)
+vir_lfc <- left_join(
+  vir_lfc,
+  filtered_go_mappings[, c("Entry", "Protein.names")],
+  by = c("uniprot" = "Entry")
+)
+
+
+
+library(pheatmap)
+library(grid)
+
+# Prepare matrix
+mat <- as.matrix(vir_lfc[, c("logFC_DC3000", "logFC_P25C2")])
+colnames(mat) <- c("DC3000 in Col-0", "P25.c2 in Col-0")
+rownames(mat) <- make.unique(vir_lfc$Protein.names)
+
+# Color scale
+breaks <- seq(-2, 2, length.out = 100)
+colors <- colorRampPalette(c("#67001F", "white", "#053061"))(99)
+
+# Draw the heatmap and capture the gtable object
+pdf("virulence_gene_log2FC_heatmap.pdf", width = 7, height = 6)  # ~89 mm × variable height
+heatmap_obj <- pheatmap(mat,
+                        cluster_rows = TRUE,
+                        cluster_cols = FALSE,
+                        color = colors,
+                        breaks = breaks,
+                        fontsize = 8,
+                        fontsize_row = 6,
+                        fontsize_col = 8,
+                        border_color = NA,
+                        main = "")
+
+# Add custom legend title (log₂FC)
+grid.text("Virulence Gene log₂FC (T3–T0)", x = 0.5, y = 0.97, gp = gpar(fontsize = 10))
+grid.text(expression(log[2] * "FC"), x = 0.92, y = 0.75, gp = gpar(fontsize = 10))
+dev.off()

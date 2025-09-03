@@ -3,6 +3,7 @@ library(tidyverse)
 library(pheatmap)
 
 # This script reads in the rds experiments for the four experiments Done by Effie in 12/2022 and 3/2023 with Rb-Tnseq
+# Talia K modified on 9/3/2025 to include all genes in p25.c2
 setwd("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/tailocin/")
 
 # Talia's tailocin tnseq results

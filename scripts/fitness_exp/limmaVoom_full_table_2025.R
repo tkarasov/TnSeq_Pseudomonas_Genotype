@@ -1,5 +1,6 @@
-# May 2025 This script takes the full counts matrix from the many trials and will do subsetting and limma voom analysis. The goal is to ask what percentage of sig genes are genetic background specific in their behavior.
+# May 2025 This script takes the full counts matrix from the many trials and will do subsetting and limma voom analysis. The goal is to ask what percentage of sig genes are genetic background specific in their behavior. In August 2025 Effie determined that the original counts may have been problematic and redid the counts table.
 
+#modified August 2025
 library(limma)
 library(tidyr)
 library(dplyr)
@@ -11,11 +12,13 @@ library(matrixStats)
 library(grid)  # For theme text customization
 library(edgeR)
 
-setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
+# setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
+setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output")
 
 ##########################################################################
 ### Read in full counts table ###
-all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
+# all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
+all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_8_2025.rds")
 all_exp$Sample <- with(all_exp, paste(treatment, plant, time_point, position, experiment, sep = "_"))
 # Move Sample column to the front
 all_exp <- all_exp[, c("Sample", setdiff(names(all_exp), "Sample"))]
@@ -62,16 +65,15 @@ count_ortholog <- count_ortholog[, colSums(count_ortholog) > 0]
 count_ortholog <- t(count_ortholog)
 counts <- count_ortholog
 
-
+##########################################################################
 ##########################################################################
 ### Step 2: Create interaction factors###
 metadata$strain <- factor(metadata$treatment)
 metadata$plant <- factor(metadata$plant)
 group <- interaction(metadata$strain, metadata$plant, metadata$time_point)
 
-
-
 # Transform counts with voom. The following takes the dge (subsetted or not, the design and a boolean for whether or not the experiment random effect should be taken into account)
+
 run_voom <- function(dge, design, experiment=FALSE){
   v <- voom(dge, design, plot = TRUE)
   # Use duplicateCorrelation to estimate variance from random effect
@@ -94,6 +96,8 @@ run_voom <- function(dge, design, experiment=FALSE){
   return(list(v=v, fit=fit))
 }
   
+
+
 filter_meta_counts <- function(column_remove, param_remove, counts, metadata){
   # Relevel factors
   metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
@@ -101,7 +105,7 @@ filter_meta_counts <- function(column_remove, param_remove, counts, metadata){
   metadata$plant <- factor(metadata$plant)
   subset_meta <- rownames(metadata)[which(metadata[[column_remove]]==param_remove)]
   new_meta <- metadata[!rownames(metadata) %in% subset_meta, ]
-  new_count <- as.data.frame(counts) %>% select(-all_of(subset_meta))
+  new_count <- as.data.frame(counts) %>% dplyr::select(-all_of(subset_meta))
   return(list(new_meta=new_meta, new_counts=new_count))
 }
 
@@ -153,6 +157,7 @@ results_table <- function(fit){
 
 }
 
+##########################################################################
 ##########################################################################
 ######### First do the analysis with all
 # design matrix
@@ -343,10 +348,10 @@ color_map <- c(
   extrafont::font_import(prompt = FALSE)
   loadfonts(device = "pdf")
 
-pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/logFC_comparison_DC3000.pdf", width = 3.5, height = 3.5, family = "Arial")
+pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFC_comparison_DC3000.pdf", width = 3.5, height = 3.5, family = "Arial")
   # 89 mm × 89 mm
   
-  ggplot(lfc_sig, aes(x = logFC_exp_0001, y = logFC_exp_0002, color = status)) +
+replication<-  ggplot(lfc_sig, aes(x = logFC_exp_0001, y = logFC_exp_0002, color = status)) +
     geom_point(alpha = 0.85, size = 1.6) +
     geom_smooth(
       data = lfc_both,
@@ -370,7 +375,7 @@ pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/U
       legend.text = element_text(size = 7),
       legend.position = "right"
     )
-  
+replication 
 dev.off()
 
 #### OK now we have a subset of genes we can follow. Those that show a significant fitness effect in DC3000 over time. We will continue to look at the full model genes. What I want to do with them is ask questions about how many of them are sensitive to the strain genetic background and how many of them are sensitive to the plant genetic background. And I want good graphics to relay this information.
@@ -512,7 +517,7 @@ threeway_sig <- length(which(gene_summary$Three_Way==TRUE))
 
 
 # write the gene_summary table to file to be used in the gene_ontology_contrasts_script
-write.csv(gene_summary, file = "gene_sig_summary.csv", row.names = FALSE,  quote = FALSE)
+write.csv(gene_summary, file = "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/gene_sig_summary.csv", row.names = FALSE,  quote = FALSE)
 
 
 
@@ -535,9 +540,9 @@ bar_data$Background <- factor(bar_data$Background, levels = c("Strain", "Plant",
 bar_data$Significance <- factor(bar_data$Significance, levels = c("Not significant", "Significant"))
 
 # Plot
-pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/genetic_background_sensitivity_barplot.pdf", width = 3.5, height = 3.5, family = "Arial")
+pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/genetic_background_sensitivity_barplot.pdf", width = 3.5, height = 3.5, family = "Arial")
 
-ggplot(bar_data, aes(x = Background, y = Count, fill = Significance)) +
+sig_bar <- ggplot(bar_data, aes(x = Background, y = Count, fill = Significance)) +
   geom_bar(stat = "identity", width = 0.6) +
   scale_fill_manual(values = c("Not significant" = "gray85", "Significant" = "#0072B2")) +
   labs(
@@ -553,7 +558,7 @@ ggplot(bar_data, aes(x = Background, y = Count, fill = Significance)) +
     legend.title = element_blank(),
     legend.text = element_text(size = 8)
   )
-
+sig_bar
 dev.off()
   
 # OK let's also graph the model with the logFC p25.c2 and logFC DC3000
@@ -567,7 +572,7 @@ dge <- DGEList(counts = counts)
 dge <- calcNormFactors(dge)
 
 # Step 2: Create design matrix with interaction
-design <- model.matrix(~ treatment * time_point + plant , data = metadata)
+design <- model.matrix(~ treatment * time_point * plant , data = metadata)
 
 # Step 3: Run voom with duplicateCorrelation to adjust for experiment. We've done this already many times. Just making sure we are using the right model
 v <- voom(dge, design, plot = TRUE)
@@ -576,27 +581,112 @@ v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consens
 fit <- lmFit(v, design, block = metadata$experiment, correlation = corfit$consensus)
 fit <- eBayes(fit)
 
-# Step 4: Extract logFCs
-lfc_mat <- fit$coefficients
-dc3000_lfc <- lfc_mat[, "time_pointt3"]
-p25c2_lfc <- dc3000_lfc + lfc_mat[, "treatmentp25c2:time_pointt3"]
+# # Step 4: Extract logFCs. No. I need to do independent contrasts. This does not work.
+# lfc_mat <- fit$coefficients
+# dc3000_lfc <- lfc_mat[, "time_pointt3"]
+# p25c2_lfc <- dc3000_lfc + lfc_mat[, "treatmentp25c2:time_pointt3"]
+# dc_col <- lfc_mat[, "time_pointt3"]
+# dc_ey <- dc3000_lfc + lfc_mat[, "time_pointt3:plantey15_2"]
+# p_col <- dc3000_lfc + lfc_mat[, "treatmentp25c2:time_pointt3"] + lfc_mat[, "time_pointt3:plantey15_2"]
+# p_ey <- dc3000_lfc + lfc_mat[, "treatmentp25c2:time_pointt3:plantey15_2"]
+# make_plant_t3_contrast <- function(strain, plant1, plant2, design) {
+#   paste0(
+#     "(treatment", strain, ":time_pointt3:plant", plant1, 
+#     " - treatment", strain, ":plant", plant1, ") - (treatment", strain, 
+#     ":time_pointt3:plant", plant2, " - treatment", strain, ":plant", plant2, ")"
+#   ) |> makeContrasts(levels = design)
+# }
+
+
+############# Newon 8/4/2025
+# Clean up design matrix
+# Ensure correct factor levels
+metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
+metadata$time_point <- factor(metadata$time_point, levels = c("t0", "t3"))
+metadata$plant <- factor(metadata$plant, levels = c("col_0", "ey15_2"))
+
+# Create design matrix and sanitize column names
+design <- model.matrix(~ treatment * time_point * plant, data = metadata)
+colnames(design) <- make.names(colnames(design))
+
+# Normalize counts and run voom with duplicateCorrelation
+dge <- DGEList(counts = counts)
+dge <- calcNormFactors(dge)
+
+v <- voom(dge, design, plot = TRUE)
+corfit <- duplicateCorrelation(v, design, block = metadata$experiment)
+v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consensus)
+fit <- lmFit(v, design, block = metadata$experiment, correlation = corfit$consensus)
+fit <- eBayes(fit)
+
+# Define contrasts for t3 vs t0 within each strain × plant condition
+
+# 1. DC3000 in col_0 (baseline)
+dc_col0_contrast <- makeContrasts(
+  logFC_DC3000_col0 = time_pointt3,
+  levels = design
+)
+
+# 2. P25c2 in col_0
+p25_col0_contrast <- makeContrasts(
+  logFC_P25c2_col0 = time_pointt3 + treatmentp25c2.time_pointt3,
+  levels = design
+)
+
+# 3. DC3000 in ey15_2
+dc_ey15_contrast <- makeContrasts(
+  logFC_DC3000_ey15 = time_pointt3 + time_pointt3.plantey15_2,
+  levels = design
+)
+
+# 4. P25c2 in ey15_2
+p25_ey15_contrast <- makeContrasts(
+  logFC_P25c2_ey15 = time_pointt3 + time_pointt3.plantey15_2 +
+    treatmentp25c2.time_pointt3 + treatmentp25c2.time_pointt3.plantey15_2,
+  levels = design
+)
+
+# Apply contrasts and extract logFCs
+
+lfc_df <- data.frame(gene = rownames(fit$coefficients))
+
+fit_dc_col0 <- eBayes(contrasts.fit(fit, dc_col0_contrast))
+lfc_df$logFC_DC3000_col0 <- fit_dc_col0$coefficients[, 1]
+
+fit_p25_col0 <- eBayes(contrasts.fit(fit, p25_col0_contrast))
+lfc_df$logFC_P25c2_col0 <- fit_p25_col0$coefficients[, 1]
+
+fit_dc_ey <- eBayes(contrasts.fit(fit, dc_ey15_contrast))
+lfc_df$logFC_DC3000_ey15 <- fit_dc_ey$coefficients[, 1]
+
+fit_p25_ey <- eBayes(contrasts.fit(fit, p25_ey15_contrast))
+lfc_df$logFC_P25c2_ey15 <- fit_p25_ey$coefficients[, 1]
+
+# Preview result
+head(lfc_df)
+
+
+
+
+
+
 
 # Step 5: Identify significant genes in DC3000 (main effect)
 tt <- topTable(fit, coef = "time_pointt3", number = Inf, adjust.method = "BH")
 sig_genes <- rownames(tt)[tt$adj.P.Val < 0.05]
-#sig_genes now has 273
+#sig_genes now has 172
 
 # Step 6: Assemble dataframe
-lfc_df <- data.frame(
-  Gene = rownames(fit),
-  logFC_DC3000 = dc3000_lfc,
-  logFC_P25C2 = p25c2_lfc,
-  Significant = ifelse(rownames(fit) %in% sig_genes, "Yes", "No")
-)
+lfc_df$Significant = ifelse(rownames(fit) %in% sig_genes, "Yes", "No")
+
+
+#Write out dataframe with the lfc for DC3000 and for p25.c2
+write.table(lfc_df, "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFCDC3000logFCp25c2_7_2025.csv", quote=FALSE, col.names =TRUE, sep=",", row.names=FALSE)
+
 
 # Step 7: Plot
-pdf("logFC_P25C2_vs_DC3000.pdf", width = 3.5, height = 3.5, family = "Helvetica")  # Nature Eco Evo format
-ggplot(lfc_df, aes(x = logFC_DC3000, y = logFC_P25C2, color = Significant)) +
+pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFC_P25C2_vs_DC3000_col_eyach.pdf", width = 3.5, height = 7, family = "Helvetica")  # Nature Eco Evo format
+dc3000_p25_col0 <- ggplot(lfc_df, aes(x = logFC_DC3000_col0, y = logFC_P25c2_col0, color = Significant)) +
   geom_point(size = 1.5, alpha = 0.85) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray60") +
   geom_vline(xintercept = 0, color = "black", linewidth = 0.3) +
@@ -604,13 +694,13 @@ ggplot(lfc_df, aes(x = logFC_DC3000, y = logFC_P25C2, color = Significant)) +
   geom_smooth(data = subset(lfc_df, Significant == "Yes"),
               method = "lm", se = FALSE, color = "gray40", linewidth = 0.7) +
   annotate("text", x = Inf, y = -Inf,
-           label = paste0("R = ", round(cor.test(lfc_df$logFC_DC3000[lfc_df$Significant == "Yes"],
-                                                 lfc_df$logFC_P25C2[lfc_df$Significant == "Yes"])$estimate, 2)),
+           label = paste0("R = ", round(cor.test(lfc_df$logFC_DC3000_col0[lfc_df$Significant == "Yes"],
+                                                 lfc_df$logFC_P25c2_col0[lfc_df$Significant == "Yes"])$estimate, 2)),
            hjust = 1.2, vjust = -0.5, size = 3.5, family = "Helvetica") +
   scale_color_manual(values = c("Yes" = "#D55E00", "No" = "gray70")) +
   labs(
-    x = expression(log[2]*"FC (DC3000, t3 vs t0)"),
-    y = expression(log[2]*"FC (P25.C2, t3 vs t0)"),
+    x = expression(log[2]*"FC (DC3000)"),
+    y = expression(log[2]*"FC (P25.C2)"),
     color = "Significant\nin DC3000"
   ) +
   theme_minimal(base_family = "Helvetica") +
@@ -622,14 +712,75 @@ ggplot(lfc_df, aes(x = logFC_DC3000, y = logFC_P25C2, color = Significant)) +
     legend.text = element_text(size = 7),
     panel.grid = element_blank()  # optional: removes background grid
   )
-dev.off()
+
+  
+
+col_eyach <- ggplot(lfc_df, aes(x = logFC_DC3000_col0 , y = logFC_DC3000_ey15, color = Significant)) +
+  geom_point(size = 1.5, alpha = 0.85) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray60") +
+  geom_vline(xintercept = 0, color = "black", linewidth = 0.3) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.3) +
+  geom_smooth(data = subset(lfc_df, Significant == "Yes"),
+              method = "lm", se = FALSE, color = "gray40", linewidth = 0.7) +
+  annotate("text", x = Inf, y = -Inf,
+           label = paste0("R = ", round(cor.test(lfc_df$logFC_DC3000_col0[lfc_df$Significant == "Yes"],
+                                                 lfc_df$logFC_DC3000_ey15[lfc_df$Significant == "Yes"])$estimate, 2)),
+           hjust = 1.2, vjust = -0.5, size = 3.5, family = "Helvetica") +
+  scale_color_manual(values = c("Yes" = "#D55E00", "No" = "gray70")) +
+  labs(
+    x = expression(log[2]*"FC (DC3000 in Col-0)"),
+    y = expression(log[2]*"FC (DC3000 in Ey1.5)"),
+    color = "Significant\nin DC3000"
+  ) +
+  theme_minimal(base_family = "Helvetica") +
+  theme(
+    text = element_text(size = 9),
+    axis.title = element_text(size = 9),
+    axis.text = element_text(size = 8),
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 7),
+    panel.grid = element_blank()  # optional: removes background grid
+  )
   
   
+  plot_grid(col_eyach,dc3000_p25_col0,  nrow=2)
   
   
+  dev.off()
+pdf("overlaid_hist_logFC_P25C2_vs_DC3000_col.pdf", width = 3.5, height =3.5, family = "Helvetica")  # Nature Eco Evo format
+  # Plotting overlaid histograms of logFC (t3 - t0) for DC3000 and p25.c2 in col_0
+  
+  # Subset relevant columns
+  df_plot <- lfc_df[, c("logFC_DC3000_col0", "logFC_P25c2_col0")]
+  colnames(df_plot) <- c("DC3000", "p25.c2")
+  
+  # Convert to long format
+  df_long <- df_plot %>%
+    pivot_longer(cols = everything(), names_to = "Strain", values_to = "logFC")
+  
+  # Create smoothed density plot
+  ggplot(df_long, aes(x = logFC, fill = Strain, color = Strain)) +
+    geom_density(alpha = 0.4, linewidth = 1.2) +
+    theme_minimal(base_family = "Arial") +
+    scale_fill_manual(values = c("DC3000" = "#0072B2", "p25.c2" = "#E69F00")) +
+    scale_color_manual(values = c("DC3000" = "#0072B2", "p25.c2" = "#E69F00")) +
+    labs(
+      title = "Smoothed logFC (t3 - t0) in Col-0",
+      x = "log2(Fitness fold change)",
+      y = "Density",
+      fill = "Strain",
+      color = "Strain"
+    ) +
+    theme(
+      text = element_text(size = 12, family = "Arial"),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      legend.position = "top"
+    )
   
   
+ dev.off() 
   
+    
   
   
 
@@ -726,236 +877,236 @@ ggplot(gene_means_by_exp, aes(x = mean_expr_exp_0001, y = mean_expr_exp_0002)) +
   annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -1.1,
            label = paste("Pearson r =", round(cor_val, 3)), size = 5)
 
-####### LFC correlations
-# Function to run DiD analysis per experiment
-run_did <- function(counts, metadata, experiment_name) {
-  # Subset
-  meta_sub <- metadata[metadata$experiment == experiment_name, ]
-  counts_sub <- counts[, meta_sub$Sample]
-  
-  # Relevel factors
-  meta_sub$treatment <- factor(meta_sub$treatment, levels = c("dc3000", "p25c2"))
-  meta_sub$time_point <- factor(meta_sub$time_point, levels = c("t0", "t3"))
-  meta_sub$plant <- factor(meta_sub$plant)
-  
-  # Design matrix for DiD
-  design <- model.matrix(~ treatment * time_point + plant, data = meta_sub)
-  
-  # Voom + limma fit
-  dge <- DGEList(counts = counts_sub)
-  dge <- calcNormFactors(dge)
-  v <- voom(dge, design)
-  fit <- lmFit(v, design)
-  fit <- eBayes(fit)
-  
-  # Extract DiD effect
-  did_results <- topTable(fit, coef = "treatmentp25c2:time_pointt3", number = Inf, sort.by = "none")
-  return(v, fit)
-}
-
-# Run for both experiments
-did_exp1 <- run_did(counts, metadata, "exp_0001")
-did_exp2 <- run_did(counts, metadata, "exp_0002")
-
-# Ensure gene identifiers are rownames in both
-common_genes <- intersect(rownames(did_exp1), rownames(did_exp2))
-
-# Build dataframe for plotting
-did_logFC_compare <- data.frame(
-  gene = common_genes,
-  logFC_exp1 = did_exp1[common_genes, "logFC"],
-  logFC_exp2 = did_exp2[common_genes, "logFC"]
-)
-
-# Calculate Pearson correlation
-cor_val <- cor(did_logFC_compare$logFC_exp1, did_logFC_compare$logFC_exp2, method = "pearson")
-
-# Plot with ggplot2
-ggplot(did_logFC_compare, aes(x = logFC_exp1, y = logFC_exp2)) +
-  geom_point(alpha = 0.5, size = 1) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
-  coord_equal() +
-  theme_minimal(base_size = 14) +
-  labs(
-    title = "Difference-in-Differences LogFC: Experiment 1 vs 2",
-    x = "DiD logFC (Experiment 1)",
-    y = "DiD logFC (Experiment 2)",
-    subtitle = paste("Pearson r =", round(cor_val, 3))
-  )
-
-# Extract top tables for the same contrast (e.g., time_pointt3)
-tt1 <- topTable(fit_exp1, coef = "time_pointt3", number = Inf, sort.by = "none")
-tt2 <- topTable(fit_exp2, coef = "time_pointt3", number = Inf, sort.by = "none")
-
-# Match on gene names
-common_genes <- intersect(rownames(tt1), rownames(tt2))
-
-# Create dataframe of logFCs
-logfc_compare <- data.frame(
-  gene = common_genes,
-  logFC_exp1 = tt1[common_genes, "logFC"],
-  logFC_exp2 = tt2[common_genes, "logFC"]
-)
-
-
-
-ggplot(logfc_compare, aes(x = logFC_exp1, y = logFC_exp2)) +
-  geom_point(alpha = 0.5, size = 1) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
-  theme_minimal(base_size = 14) +
-  labs(
-    title = "LogFC comparison for time_pointt3 across experiments",
-    x = "LogFC (Experiment 1)",
-    y = "LogFC (Experiment 2)"
-  ) +
-  coord_equal()
-
+# ####### LFC correlations
+# # Function to run DiD analysis per experiment
+# run_did <- function(counts, metadata, experiment_name) {
+#   # Subset
+#   meta_sub <- metadata[metadata$experiment == experiment_name, ]
+#   counts_sub <- counts[, meta_sub$Sample]
+#   
+#   # Relevel factors
+#   meta_sub$treatment <- factor(meta_sub$treatment, levels = c("dc3000", "p25c2"))
+#   meta_sub$time_point <- factor(meta_sub$time_point, levels = c("t0", "t3"))
+#   meta_sub$plant <- factor(meta_sub$plant)
+#   
+#   # Design matrix for DiD
+#   design <- model.matrix(~ treatment * time_point + plant, data = meta_sub)
+#   
+#   # Voom + limma fit
+#   dge <- DGEList(counts = counts_sub)
+#   dge <- calcNormFactors(dge)
+#   v <- voom(dge, design)
+#   fit <- lmFit(v, design)
+#   fit <- eBayes(fit)
+#   
+#   # Extract DiD effect
+#   did_results <- topTable(fit, coef = "treatmentp25c2:time_pointt3", number = Inf, sort.by = "none")
+#   return(v, fit)
+# }
+# 
+# # Run for both experiments
+# did_exp1 <- run_did(counts, metadata, "exp_0001")
+# did_exp2 <- run_did(counts, metadata, "exp_0002")
+# 
+# # Ensure gene identifiers are rownames in both
+# common_genes <- intersect(rownames(did_exp1), rownames(did_exp2))
+# 
+# # Build dataframe for plotting
+# did_logFC_compare <- data.frame(
+#   gene = common_genes,
+#   logFC_exp1 = did_exp1[common_genes, "logFC"],
+#   logFC_exp2 = did_exp2[common_genes, "logFC"]
+# )
+# 
+# # Calculate Pearson correlation
+# cor_val <- cor(did_logFC_compare$logFC_exp1, did_logFC_compare$logFC_exp2, method = "pearson")
+# 
+# # Plot with ggplot2
+# ggplot(did_logFC_compare, aes(x = logFC_exp1, y = logFC_exp2)) +
+#   geom_point(alpha = 0.5, size = 1) +
+#   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+#   coord_equal() +
+#   theme_minimal(base_size = 14) +
+#   labs(
+#     title = "Difference-in-Differences LogFC: Experiment 1 vs 2",
+#     x = "DiD logFC (Experiment 1)",
+#     y = "DiD logFC (Experiment 2)",
+#     subtitle = paste("Pearson r =", round(cor_val, 3))
+#   )
+# 
+# # Extract top tables for the same contrast (e.g., time_pointt3)
+# tt1 <- topTable(fit_exp1, coef = "time_pointt3", number = Inf, sort.by = "none")
+# tt2 <- topTable(fit_exp2, coef = "time_pointt3", number = Inf, sort.by = "none")
+# 
+# # Match on gene names
+# common_genes <- intersect(rownames(tt1), rownames(tt2))
+# 
+# # Create dataframe of logFCs
+# logfc_compare <- data.frame(
+#   gene = common_genes,
+#   logFC_exp1 = tt1[common_genes, "logFC"],
+#   logFC_exp2 = tt2[common_genes, "logFC"]
+# )
+# 
+# 
+# 
+# ggplot(logfc_compare, aes(x = logFC_exp1, y = logFC_exp2)) +
+#   geom_point(alpha = 0.5, size = 1) +
+#   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+#   theme_minimal(base_size = 14) +
+#   labs(
+#     title = "LogFC comparison for time_pointt3 across experiments",
+#     x = "LogFC (Experiment 1)",
+#     y = "LogFC (Experiment 2)"
+#   ) +
+#   coord_equal()
+# 
 
 ############ Make subsets and do statistics independently
-
-
-rows_dc3000_ey15_2 <- which(metadata$treatment == "dc3000" & metadata$plant == "ey15_2")
-counts_dc3000_eyach <- counts[,rows_dc3000_ey15_2]
-metadata_dc3000_eyach <- metadata[rows_dc3000_ey15_2,]
-
-
-rows_dc3000_col <- which(metadata$treatment == "dc3000" & metadata$plant == "col_0")
-counts_dc3000_col <- counts[,rows_dc3000_col]
-metadata_dc3000_col <- metadata[rows_dc3000_col,]
-
-
-rows_p25_ey15_2 <- which(metadata$treatment == "p25c2" & metadata$plant == "ey15_2")
-counts_p25_eyach <- counts[,rows_p25_ey15_2]
-metadata_p25_eyach <- metadata[rows_p25_ey15_2,]
-
-
-rows_p25_col <- which(metadata$treatment == "p25c2" & metadata$plant == "col_0")
-counts_p25_col <- counts[,rows_p25_col]
-metadata_p25_col <- metadata[rows_p25_col,]
-
-run_edgeR <- function(metadata, group_column, counts, output_prefix = "edgeR_result") {
-  library(edgeR)
-  # 3. Create group factor
-  group <- factor(metadata$time_point)
-  
-  # 4. Create DGEList
-  dge <- DGEList(counts = (counts))  # genes as rows, samples as columns
-  dge$samples$group <- group
-  
-  # 5. Filter lowly expressed genes
-  #keep <- filterByExpr(dge, group = group)
-  #dge <- dge[keep,, keep.lib.sizes = FALSE]
-  
-  # 6. Normalize and estimate dispersion
-  dge <- calcNormFactors(dge)
-  design <- model.matrix(~ group)
-  dge <- estimateDisp(dge, design)
-  
-  # 7. Fit model and run test
-  fit <- glmFit(dge, design)
-  lrt <- glmLRT(fit)
-  
-  # 8. Save results
-  res <- topTags(lrt, n = Inf)$table
-  out_file <- paste0(output_prefix, ".csv")
-  write.csv(res, out_file, row.names = TRUE)
-  
-  return(lrt)
-}
-
-
-results_dc3000_col <- run_edgeR(
-  metadata = metadata_dc3000_col,
-  counts = counts_dc3000_col,
-  group_column = "time_point",
-  output_prefix = "dc3000_col"
-)
-
-
-results_dc3000_eyach <- run_edgeR(
-  metadata = metadata_dc3000_eyach,
-  counts = counts_dc3000_eyach,
-  group_column = "time_point",
-  output_prefix = "dc3000_eyach"
-)
-
-results_p25_col <- run_edgeR(
-  metadata = metadata_p25_col,
-  counts = counts_p25_col,
-  group_column = "time_point",
-  output_prefix = "p25_col"
-)
-
-results_p25_eyach <- run_edgeR(
-  metadata = metadata_p25_eyach,
-  counts = counts_p25_eyach,
-  group_column = "time_point",
-  output_prefix = "p25_eyach"
-)
-
-
-plot(results_dc3000_col$table$logFC, results_p25_col$table$logFC)
-plot(results_dc3000_col$table$logFC, results_dc3000_eyach$table$logFC)
-plot(results_p25_col$table$logFC, results_dc3000_eyach$table$logFC)
-plot(results_p25_col$table$logFC, results_p25_eyach$table$logFC)
-
-# combine results into one dataframe
-combined_logFC <- data.frame(
-  gene = rownames(results_dc3000_col$table),
-  dc3000_col0   = results_dc3000_col$table$logFC,
-  dc3000_ey15_2 = results_dc3000_eyach$table$logFC,
-  p25c2_col0    = results_p25_col$table$logFC,
-  p25c2_ey15_2  = results_p25_eyach$table$logFC,
-  pval_fullmodel = lrt_all$table$PValue,
-  fdr_fullmodel = p.adjust(lrt_all$table$PValue, method = "BH")
-)
-
-#graph
-
-library(GGally)
-library(dplyr)
-df = combined_logFC
-df <- df %>%
-  mutate(significant = fdr_fullmodel < 0.05)
-# Select only the result columns
-result_cols <- df[,c("dc3000_col0", "dc3000_ey15_2", "p25c2_col0",  "p25c2_ey15_2")]
-
-# Bind the significance column for coloring
-plot_data <- bind_cols(result_cols, significant = df$significant)
-
-# Pairwise plot colored by FDR significance
-p <- ggpairs(plot_data, 
-        aes(color = significant, alpha = 0.6),
-        upper = list(continuous = wrap("points", size = 1.5))) + theme_classic(base_size = 12)
-# Add color scale
-p <- p + scale_color_manual(
-  values = c("TRUE" = "navy", "FALSE" = "orange"),
-  labels = c("FALSE" = "Not significant", "TRUE" = "FDR < 0.05"),
-  name = "Significance"
-)
-
-#make a pdf of this plot
-pdf("pairwise_comparison_logFC_effect.pdf", width = 10, height = 10, font = "ArialMT")
-p
-dev.off()
-
-# Compute sign for each logFC
-combined_logFC$sign_dc3000_col0   <- sign(combined_logFC$dc3000_col0)
-combined_logFC$sign_p25c2_col0    <- sign(combined_logFC$p25c2_col0)
-combined_logFC$sign_dc3000_ey15_2 <- sign(combined_logFC$dc3000_ey15_2)
-combined_logFC$sign_p25c2_ey15_2  <- sign(combined_logFC$p25c2_ey15_2)
-
-# Find genes with a sign flip between strains in either plant
-interaction_genes <- combined_logFC[
-  ((combined_logFC$sign_dc3000_col0 != 0 & combined_logFC$sign_p25c2_col0 != 0 &
-      combined_logFC$sign_dc3000_col0 != combined_logFC$sign_p25c2_col0) |
-     (combined_logFC$sign_dc3000_ey15_2 != 0 & combined_logFC$sign_p25c2_ey15_2 != 0 &
-        combined_logFC$sign_dc3000_ey15_2 != combined_logFC$sign_p25c2_ey15_2)),
-]
-interaction_genes_sig <- interaction_genes[interaction_genes$fdr_fullmodel < 0.05, ]
-# 85 genes show sign epistasis
-
-# Okay time to make a table. 
-
-
-
+# 
+# 
+# rows_dc3000_ey15_2 <- which(metadata$treatment == "dc3000" & metadata$plant == "ey15_2")
+# counts_dc3000_eyach <- counts[,rows_dc3000_ey15_2]
+# metadata_dc3000_eyach <- metadata[rows_dc3000_ey15_2,]
+# 
+# 
+# rows_dc3000_col <- which(metadata$treatment == "dc3000" & metadata$plant == "col_0")
+# counts_dc3000_col <- counts[,rows_dc3000_col]
+# metadata_dc3000_col <- metadata[rows_dc3000_col,]
+# 
+# 
+# rows_p25_ey15_2 <- which(metadata$treatment == "p25c2" & metadata$plant == "ey15_2")
+# counts_p25_eyach <- counts[,rows_p25_ey15_2]
+# metadata_p25_eyach <- metadata[rows_p25_ey15_2,]
+# 
+# 
+# rows_p25_col <- which(metadata$treatment == "p25c2" & metadata$plant == "col_0")
+# counts_p25_col <- counts[,rows_p25_col]
+# metadata_p25_col <- metadata[rows_p25_col,]
+# 
+# run_edgeR <- function(metadata, group_column, counts, output_prefix = "edgeR_result") {
+#   library(edgeR)
+#   # 3. Create group factor
+#   group <- factor(metadata$time_point)
+#   
+#   # 4. Create DGEList
+#   dge <- DGEList(counts = (counts))  # genes as rows, samples as columns
+#   dge$samples$group <- group
+#   
+#   # 5. Filter lowly expressed genes
+#   #keep <- filterByExpr(dge, group = group)
+#   #dge <- dge[keep,, keep.lib.sizes = FALSE]
+#   
+#   # 6. Normalize and estimate dispersion
+#   dge <- calcNormFactors(dge)
+#   design <- model.matrix(~ group)
+#   dge <- estimateDisp(dge, design)
+#   
+#   # 7. Fit model and run test
+#   fit <- glmFit(dge, design)
+#   lrt <- glmLRT(fit)
+#   
+#   # 8. Save results
+#   res <- topTags(lrt, n = Inf)$table
+#   out_file <- paste0(output_prefix, ".csv")
+#   write.csv(res, out_file, row.names = TRUE)
+#   
+#   return(lrt)
+# }
+# 
+# 
+# results_dc3000_col <- run_edgeR(
+#   metadata = metadata_dc3000_col,
+#   counts = counts_dc3000_col,
+#   group_column = "time_point",
+#   output_prefix = "dc3000_col"
+# )
+# 
+# 
+# results_dc3000_eyach <- run_edgeR(
+#   metadata = metadata_dc3000_eyach,
+#   counts = counts_dc3000_eyach,
+#   group_column = "time_point",
+#   output_prefix = "dc3000_eyach"
+# )
+# 
+# results_p25_col <- run_edgeR(
+#   metadata = metadata_p25_col,
+#   counts = counts_p25_col,
+#   group_column = "time_point",
+#   output_prefix = "p25_col"
+# )
+# 
+# results_p25_eyach <- run_edgeR(
+#   metadata = metadata_p25_eyach,
+#   counts = counts_p25_eyach,
+#   group_column = "time_point",
+#   output_prefix = "p25_eyach"
+# )
+# 
+# 
+# plot(results_dc3000_col$table$logFC, results_p25_col$table$logFC)
+# plot(results_dc3000_col$table$logFC, results_dc3000_eyach$table$logFC)
+# plot(results_p25_col$table$logFC, results_dc3000_eyach$table$logFC)
+# plot(results_p25_col$table$logFC, results_p25_eyach$table$logFC)
+# 
+# # combine results into one dataframe
+# combined_logFC <- data.frame(
+#   gene = rownames(results_dc3000_col$table),
+#   dc3000_col0   = results_dc3000_col$table$logFC,
+#   dc3000_ey15_2 = results_dc3000_eyach$table$logFC,
+#   p25c2_col0    = results_p25_col$table$logFC,
+#   p25c2_ey15_2  = results_p25_eyach$table$logFC,
+#   pval_fullmodel = lrt_all$table$PValue,
+#   fdr_fullmodel = p.adjust(lrt_all$table$PValue, method = "BH")
+# )
+# 
+# #graph
+# 
+# library(GGally)
+# library(dplyr)
+# df = combined_logFC
+# df <- df %>%
+#   mutate(significant = fdr_fullmodel < 0.05)
+# # Select only the result columns
+# result_cols <- df[,c("dc3000_col0", "dc3000_ey15_2", "p25c2_col0",  "p25c2_ey15_2")]
+# 
+# # Bind the significance column for coloring
+# plot_data <- bind_cols(result_cols, significant = df$significant)
+# 
+# # Pairwise plot colored by FDR significance
+# p <- ggpairs(plot_data, 
+#         aes(color = significant, alpha = 0.6),
+#         upper = list(continuous = wrap("points", size = 1.5))) + theme_classic(base_size = 12)
+# # Add color scale
+# p <- p + scale_color_manual(
+#   values = c("TRUE" = "navy", "FALSE" = "orange"),
+#   labels = c("FALSE" = "Not significant", "TRUE" = "FDR < 0.05"),
+#   name = "Significance"
+# )
+# 
+# #make a pdf of this plot
+# pdf("pairwise_comparison_logFC_effect.pdf", width = 10, height = 10, font = "ArialMT")
+# p
+# dev.off()
+# 
+# # Compute sign for each logFC
+# combined_logFC$sign_dc3000_col0   <- sign(combined_logFC$dc3000_col0)
+# combined_logFC$sign_p25c2_col0    <- sign(combined_logFC$p25c2_col0)
+# combined_logFC$sign_dc3000_ey15_2 <- sign(combined_logFC$dc3000_ey15_2)
+# combined_logFC$sign_p25c2_ey15_2  <- sign(combined_logFC$p25c2_ey15_2)
+# 
+# # Find genes with a sign flip between strains in either plant
+# interaction_genes <- combined_logFC[
+#   ((combined_logFC$sign_dc3000_col0 != 0 & combined_logFC$sign_p25c2_col0 != 0 &
+#       combined_logFC$sign_dc3000_col0 != combined_logFC$sign_p25c2_col0) |
+#      (combined_logFC$sign_dc3000_ey15_2 != 0 & combined_logFC$sign_p25c2_ey15_2 != 0 &
+#         combined_logFC$sign_dc3000_ey15_2 != combined_logFC$sign_p25c2_ey15_2)),
+# ]
+# interaction_genes_sig <- interaction_genes[interaction_genes$fdr_fullmodel < 0.05, ]
+# # 85 genes show sign epistasis
+# 
+# # Okay time to make a table. 
+# 
+# 
+# 

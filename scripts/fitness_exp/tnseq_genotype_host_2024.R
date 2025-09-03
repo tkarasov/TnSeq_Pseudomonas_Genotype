@@ -15,7 +15,7 @@ setwd("~/Google\ Drive/My\ Drive/Utah_Professorship/projects/Tnseq/compiled_tria
 
 #read in the metacsv with all the experiments. I'm confused. I think we have a better one. I don't know where this came from. 
 #all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data//full_experiments/all_p25_dc_axenic_6_2024.csv", header = TRUE)
-all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/", header = TRUE)
+all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/all_p25_dc_axenic_5_2025.csv", header = TRUE)
 
 # I think it's best if we just compare internally within the experiments and then look at how replicable the results are
 
