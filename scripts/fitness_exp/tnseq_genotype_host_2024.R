@@ -17,30 +17,43 @@ setwd("~/Google\ Drive/My\ Drive/Utah_Professorship/projects/Tnseq/compiled_tria
 #all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data//full_experiments/all_p25_dc_axenic_6_2024.csv", header = TRUE)
 all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/all_p25_dc_axenic_5_2025.csv", header = TRUE)
 
+# just recode all_exp
+orth <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", header = TRUE, row.names = 1, sep = ",")
+orth[orth == ""] <- NA
+lkup <- setNames(orth$p25_BJE, orth$DC3000)
+all_orth$p25_BJE <- ifelse(
+  grepl("^WP", res_table$gene),           # only if gene starts with WP
+  lkup[res_table$gene],                   # look up value (may be NA if not present)
+  NA )                                     # else leave NA
+
+
 # I think it's best if we just compare internally within the experiments and then look at how replicable the results are
 
 # 2023 and 2023 experiments. Let's analyze the orthologs shared by all.
 ###########
 #there is inconsistency in naming. everything needs to be made lowercase
 
-all_orth <- all_exp[, colSums(is.na(all_exp[1:7321])) == 0]
+all_orth <- all_exp[, colSums(is.na(all_exp[,1:dim(all_exp[2])])) == 0]
+#7283 orthologs and 4463 that do not have NA
 count_table_p <- t(all_orth[,9:dim(all_orth)[2]])
 sample_order_p <- (all_orth[,1:8])
 sample_order_p <- sample_order_p %>% mutate(plant = tolower(plant))
 
 # Let's filter out all samples that have fewer than 25,000 reads
-high_enough <- which(colSums(count_table_p)>=25000)
+high_enough <- which(colSums(count_table_p, na.rm =TRUE)>=25000)
 count_table_filter <-count_table_p[,high_enough]
 sample_order_filter <- sample_order_p[high_enough,]
 
+# Let's also output a file that has all genes not just those that have orthologs
+
 # Let's write the count_table and sample_order to file
 write_rds(sample_order_filter, "~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/full_experiments/all_sample_order_filter_6_12_2024.rds")
-write_rds(count_table_filter, "~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/full_experiments/all_count_table_filter_6_12_2024.rds")
+write_rds(count_table_filter, "~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/full_experiments/all_count_table_filter_9_3_2025.rds")
 
 
 #########
 # This blog was helpful for getting me to understand the interactions: https://www.biostars.org/p/353618/#356111
-
+#I need to remove genes that are all NA
 
 # first I will randomly assign the controls to either eyach or col0
 plants <- c(rep("ey15_2",24), rep("col_0",24))

@@ -201,3 +201,4 @@ all_exp <- full_join(x=dc_exp, y=p25_exp)
 write.csv(all_exp, "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/full_experiments/all_p25_dc_axenic_8_2025.csv", quote = FALSE, row.names =FALSE)
 
 #only has numbers through row 285 for number of reads. Weirdly
+

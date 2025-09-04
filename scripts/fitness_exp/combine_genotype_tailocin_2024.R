@@ -13,6 +13,8 @@ colnames(tb_p25) <- c("ID", "logFC_tailocin", "AveExpr_tailocin", "t_tailocin", 
 
 #read in the metacsv with all the experiments
 sample_order_filter  <- readRDS("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/full_experiments/all_sample_order_filter_6_12_2024.rds")
+
+# this was the original counts table but in reality we want the one with all genes (not just orthologs)
 count_table_filter <- readRDS("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/full_experiments/all_count_table_filter_6_12_2024.rds")
 
 # We need to just consider the p25.c2 data

@@ -60,12 +60,15 @@ keep <- which(rowSums(counts, na.rm = TRUE)>=25000)
 counts <- counts[keep,]
 metadata_keep = metadata[keep,]
 metadata <- metadata_keep
+# remove experiment 1
+metadata1 <- metadata[which(metadata$experiment == "exp_0002"),]
+counts1 <- counts[,which(metadata$experiment == "exp_0002")] 
 table(metadata[,c("experiment", "treatment", "time_point")])
 
 # remove dc3000 samples
-keep_p25 <- which(metadata$treatment != "dc3000")
-meta_p25 <- metadata[keep_p25,]
-counts_p25 <- counts[keep_p25,]
+keep_p25 <- which(metadata1$treatment != "dc3000")
+meta_p25 <- metadata1[keep_p25,]
+counts_p25 <- counts1[keep_p25,]
 counts<- counts_p25
 metadata <- meta_p25
 ##########################################################################
@@ -167,11 +170,11 @@ results_table <- function(fit){
 #**If whole genes or samples are `NA`** → drop those rows/columns:
 
 counts <- t(counts[,which(colSums(counts)>0) ])
-design <- model.matrix(~ time_point * plant + experiment, data = metadata)
+design <- model.matrix(~ time_point * plant, data = metadata)
 # experiment is included as a random effect only
 dge <- DGEList(counts = counts)
 dge <- calcNormFactors(dge)
-res <- run_voom(dge, design, experiment = TRUE)
+res <- run_voom(dge, design)
 v <- res$v
 fit <- res$fit
 result_full <- summarize_overlap_between_terms(
