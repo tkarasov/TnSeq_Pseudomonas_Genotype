@@ -30,11 +30,14 @@ my_tufte_plot <- function(p) {
 }
 ########## READ IN COUNTS TABLE
 # May 2025 This script takes the full counts matrix from the many trials and will do subsetting and limma voom analysis. The goal is to ask what percentage of sig genes are genetic background specific in their behavior.
-setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/full_experiments/")
+# setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/full_experiments/")
+
+setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
 
 ##########################################################################
 ### Read in full counts table ###
-all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_8_2025.rds")
+#all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_8_2025.rds")
+all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
 all_exp$Sample <- with(all_exp, paste(treatment, plant, time_point, position, experiment, sep = "_"))
 # Move Sample column to the front
 all_exp <- all_exp[, c("Sample", setdiff(names(all_exp), "Sample"))]
