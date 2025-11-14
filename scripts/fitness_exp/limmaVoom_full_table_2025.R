@@ -1,5 +1,5 @@
 # May 2025 This script takes the full counts matrix from the many trials and will do subsetting and limma voom analysis. The goal is to ask what percentage of sig genes are genetic background specific in their behavior. In August 2025 Effie determined that the original counts may have been problematic and redid the counts table.
-
+# oh no, that table must messed up. The final counts table is in 10/2025
 #modified August 2025
 library(limma)
 library(tidyr)
@@ -18,7 +18,8 @@ setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive
 ##########################################################################
 ### Read in full counts table ###
 # all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
-all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_8_2025.rds")
+#all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_8_2025.rds")
+all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/full_experiments/all_p25_dc_axenic_10_07_2025.csv")
 all_exp$Sample <- with(all_exp, paste(treatment, plant, time_point, position, experiment, sep = "_"))
 # Move Sample column to the front
 all_exp <- all_exp[, c("Sample", setdiff(names(all_exp), "Sample"))]
@@ -681,7 +682,7 @@ lfc_df$Significant = ifelse(rownames(fit) %in% sig_genes, "Yes", "No")
 
 
 #Write out dataframe with the lfc for DC3000 and for p25.c2
-write.table(lfc_df, "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFCDC3000logFCp25c2_7_2025.csv", quote=FALSE, col.names =TRUE, sep=",", row.names=FALSE)
+write.table(lfc_df, "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFCDC3000logFCp25c2_10_2025.csv", quote=FALSE, col.names =TRUE, sep=",", row.names=FALSE)
 
 
 # Step 7: Plot

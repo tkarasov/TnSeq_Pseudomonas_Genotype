@@ -37,7 +37,8 @@ setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive
 ##########################################################################
 ### Read in full counts table ###
 #all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_8_2025.rds")
-all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
+#all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
+all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/full_experiments/all_p25_dc_axenic_10_07_2025.csv")
 all_exp$Sample <- with(all_exp, paste(treatment, plant, time_point, position, experiment, sep = "_"))
 # Move Sample column to the front
 all_exp <- all_exp[, c("Sample", setdiff(names(all_exp), "Sample"))]
@@ -61,7 +62,6 @@ gene_cols <- colnames(all_exp)[13:dim(all_exp)[2]]
 
 # Create metadata and counts matrix
 metadata <- all_exp[,metadata_cols]
-#metadata$plant <- tools::toTitleCase(metadata$plant)
 rownames(metadata) <- metadata$Sample
 counts <- all_exp[,gene_cols]
 rownames(counts) <- all_exp$Sample
@@ -87,11 +87,9 @@ p25_ey_metadata <- p25_metadata[ey,]
 p25_ey_counts <- t(p25_counts[ey,])
 lib_sizes <- colSums(p25_ey_counts)
 p25_ey_counts_clean <- p25_ey_counts[, lib_sizes > 0]
+design <- model.matrix(~ time_point, data = p25_ey_metadata)
 
 
-#design <- model.matrix(~ time_point, data = p25_ey_metadata)
-
-#corfit <- duplicateCorrelation(v, design, block = p25_ey_metadata$experiment)
 
 # 
 # v <- voom(dge, design, block = p25_ey_metadata$experiment)
@@ -102,17 +100,7 @@ p25_ey_counts_clean <- p25_ey_counts[, lib_sizes > 0]
 # 
 
 ###### THIS IS WHERE I GENERATE THE LOGFC DATA######### Actually I pulled in the lfc datatable from limmaVoom
-lfc_df <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/logFCDC3000logFCp25c2_7_2025.csv")
-
-# log2fc_df <- data.frame(
-#   gene = rownames(top_df),
-#   log2FC = top_df$logFC,
-#   pvalue = top_df$P.Value,
-#   FDR = top_df$adj.P.Val
-# )
-
-#log2fc_df$ISFDR <- (log2fc_df$FDR<0.01)
-#log2fc_sig <- log2fc_df[which(log2fc_df$ISFDR==TRUE),]
+lfc_df <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFCDC3000logFCp25c2_10_2025.csv")
 
 #this is the output from running the python evolutionary genetics scripts on the panX output
 conservation = read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/full_tag_pd.csv", row.names = 1)
@@ -130,24 +118,25 @@ rownames(blast_div) <- blast_div$WP
 
 #I need to rename the gene names in conservation file
 orthologs <- read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", 
-   header = TRUE,
-                        sep = ",", row.names = 2)
-                        
+   header = TRUE, sep = ",", row.names = 2)
+
+#And assign NA to empty DC3000 orthology
 orthologs[orthologs$DC3000=="",]$DC3000<-NA
 
-
+#this was the direct output file of Effie.
+other_ortholog <- read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25_c2_vs_DC3000_out6_nohead_add15_filter_sorted_tophit_2.txt",  sep="\t")
 
 # change conservation DAKCFMEO to BJE identifier
 conservation$BJE <- orthologs[rownames(conservation),]$p25_BJE
 conservation$WP <- orthologs[rownames(conservation),]$DC3000
+
 # remove those genes that are duplicated in the BJE genome
 # get numbers of duplicated rows. Keeping original number
 conservation2<-conservation %>%
   arrange(BJE) %>%
   filter(duplicated(BJE) == FALSE)
-
 conservation2$DAC <- rownames(conservation2)
-# remove genes with 
+# remove genes with NA for BJE
 conservation2 <- conservation2 %>% filter(is.na(BJE)==FALSE)
 rownames(conservation2)<- conservation2$BJE
 
@@ -155,7 +144,6 @@ rownames(conservation2)<- conservation2$BJE
 i=1
 dupl_WP<-which(duplicated(conservation2$WP))
 conservation2 <- conservation2[-dupl_WP,]
-#rownames(conservation2)<- conservation2$WP
 for(rowname in rownames(conservation2)){
    if(!is.na(conservation2[rowname,]$WP)){
     rownames(conservation2)[i]=conservation2[rowname,]$WP
@@ -164,45 +152,90 @@ for(rowname in rownames(conservation2)){
 }
 
 # Now combine the diversity and tnseq files
-#rownames(log2fc_df)<- log2fc_df$gene
-rownames(lfc_df) <- lfc_df$Gene
+rownames(lfc_df) <- lfc_df$gene
 fit_con <- merge(conservation2, lfc_df, by=0, all=TRUE)
 rownames(fit_con) <- fit_con$Row.names
 fit_con <- merge(fit_con, blast_div, by=0, all=TRUE)
+# There are ~6 genes in blast_div not in fit_con before merge
+
 # now we can ask how the time in tree relates to the fitness effect
-model1 <- lm(data=fit_con, logFC_DC3000 ~ Time.in.tree + Genetic_Diversity + Num_gene_events)
+model1 <- lm(data=fit_con, logFC_DC3000_col0 ~ Time.in.tree + Genetic_Diversity + Num_gene_events)
 names(fit_con) <- make.unique(names(fit_con), sep = "__dup")
 #############
 
 # 1. Compute correlation in each bin
 df <- fit_con %>%
-  mutate(div_bin = cut(perc_div_aa, breaks = seq(0, 100, by = 10), include.lowest = TRUE))
+  mutate(div_bin = cut(perc_div_aa, breaks = seq(50, 100, by = 5), include.lowest = TRUE))
+df <- df %>%
+  mutate(div_bin = as.character(div_bin))
 cor_by_bin <- df %>%
+  filter(!is.na(div_bin)) %>%          # <--- drop NA bin
   group_by(div_bin) %>%
-  summarise(cor_val = cor(x, y), .groups = "drop")
-# Step 1: Convert bin labels (e.g., "[60,65)") into numeric midpoints
-cor_by_bin <- cor_by_bin %>%
-  mutate(div_range = gsub("\\[|\\)|\\]", "", div_bin)) %>%      # Remove brackets/braces
-  separate(div_range, into = c("lower", "upper"), sep = ",", convert = TRUE) %>%  # Split into numbers
-  mutate(div_mid = (lower + upper) / 2) %>%                     # Compute midpoint
-  dplyr::select(-lower, -upper)                                        # Drop temporary columns
+  summarise(
+    cor_val = cor(logFC_DC3000_col0,
+                  logFC_P25c2_col0,
+                  use = "complete.obs"),
+    .groups = "drop"
+  )
+# 2: Convert bin labels (e.g., "[60,65)") into numeric midpoints
+cor_by_bin2 <- df %>%
+  filter(!is.na(div_bin)) %>%
+  group_by(div_bin) %>%
+  summarise(
+    n_pairs = sum(!is.na(logFC_DC3000_col0) &
+                    !is.na(logFC_P25c2_col0)),
+    cor_val = ifelse(
+      n_pairs >= 2,
+      cor(logFC_DC3000_col0, logFC_P25c2_col0, use = "complete.obs"),
+      NA_real_
+    ),
+    .groups = "drop"
+  ) %>%
+  # --- Fisher CI only if n >= 10 (recommended threshold) ---
+  mutate(
+    z      = ifelse(n_pairs >= 10, atanh(cor_val), NA_real_),
+    se_z   = ifelse(n_pairs >= 10, 1 / sqrt(n_pairs - 3), NA_real_),
+    z_low  = ifelse(is.finite(se_z), z - 1.96 * se_z, NA_real_),
+    z_high = ifelse(is.finite(se_z), z + 1.96 * se_z, NA_real_),
+    cor_low  = tanh(z_low),
+    cor_high = tanh(z_high)
+  ) %>%
+  mutate(
+    div_range = gsub("\\[|\\(|\\)|\\]|\\s", "", div_bin)
+  ) %>%
+  separate(
+    div_range, into = c("lower", "upper"),
+    sep = ",", convert = TRUE
+  ) %>%
+  mutate(div_mid = (lower + upper) / 2) %>%
+  select(div_bin, div_mid, n_pairs, cor_val, cor_low, cor_high)
 
 # 3. Plot
-div_pear <- ggplot(cor_by_bin, aes(x = div_mid, y = cor)) +
-  geom_point(size = 3) +
-  geom_smooth(method = "loess", span = 0.75, se = TRUE, color = "black") +
-  theme_classic(base_size = 12) +
+div_pear <- ggplot(cor_by_bin2, aes(x = div_mid, y = cor_val)) +
+  geom_hline(yintercept = 0, linewidth = 0.3, linetype = "dashed") +
+  geom_errorbar(
+    aes(ymin = cor_low, ymax = cor_high),
+    width = 0,
+    linewidth = 0.6
+  ) +
+  geom_line(linewidth = 0.7) +
+  geom_point(aes(size = n_pairs), show.legend = FALSE) +  # size ~ n_pairs (optional)
+  theme_bw(base_size = 11) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank()
+  ) +
   labs(
-    x = "Amino Acid Divergence (%)",
-    y = expression("Pearson correlation (logFC"[DC3000]*", logFC"[P25*C*2]*")"),
-    title = "LOESS Fit: Fitness Correlation vs. Sequence Divergence"
+    x = "% Amino Acid Divergence",
+    y = "Correlation of fitness effect (DC3000 vs P25.c2 logFC)"
   )
 
 pdf("divergence_correlatedFC.pdf", width = 3.5, height = 3, family = "Helvetica")  # Nature Eco
 my_tufte_plot(div_pear)
 dev.off()
+
 ################
-# Let's read in the Tsuda expression data
+#Now Let's move into the section where we look at the explanatory impact of different variables. read in the Tsuda expression data
 ################
 exp <- read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/Tsuda_PNAS_expression_data/tk_modified_files/expression_gene_mapping.txt", sep="\t", header = TRUE)
 
@@ -225,7 +258,7 @@ fit_exp <- merge(fit_con, exp_sub, by.x="WP.x", by.y="WP", all.x = TRUE)
 #hm <- merge(fit_exp, lfc_both_df, by.x= "WP", by.y = "Gene")
 #fit_exp <- hm
 
-model2 <- lm(data=fit_exp,  logFC_DC3000~ logFC_P25C2 +Time.in.tree + KB_Pto +Genetic_Diversity + Col.0_Pto + Num_gene_events )
+model2 <- lm(data=fit_exp,  logFC_DC3000_col0 ~ logFC_P25c2_col0 +Time.in.tree + KB_Pto +Genetic_Diversity + Col.0_Pto + Num_gene_events )
 summary(model2)
 anova_table <-Anova(model2, type=3)
 anova_table$Term <- rownames(anova_table)
@@ -357,8 +390,8 @@ cat("R² =", round(rsq, 3), "\n")
 
 # Those analyses are fine. 
   # Linear model with interaction term
-  model_interact <- lm(logFC_P25C2 ~ logFC_DC3000 * perc_div_aa, data = fit_con)
-  model_no_interact <- lm(logFC_P25C2 ~ logFC_DC3000 , data = fit_con)
+  model_interact <- lm(logFC_P25c2_col0 ~ logFC_DC3000_col0 * perc_div_aa, data = fit_con)
+  model_no_interact <- lm(logFC_P25c2_col0 ~ logFC_DC3000_col0 , data = fit_con)
   # Get adjusted R²
   no_adj_r2 <- summary(model_no_interact)$adj.r.squared
   adj_r2 <- summary(model_interact)$adj.r.squared
