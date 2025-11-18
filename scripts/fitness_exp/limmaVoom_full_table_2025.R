@@ -482,7 +482,7 @@ summarize_background_sensitivity_with_3way <- function(
   }
 
 gene_summary <- summarize_background_sensitivity_with_3way(
-  fit = fit,
+  fit = fit2,
   coef_time = "time_pointt3",
   coef_strain_time = "treatmentp25c2:time_pointt3",
   coef_plant_time = "time_pointt3:plantey15_2",
@@ -505,7 +505,7 @@ threeway_sig <- length(which(gene_summary$Three_Way==TRUE))
 
 
 # write the gene_summary table to file to be used in the gene_ontology_contrasts_script
-write.csv(gene_summary, file = "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/gene_sig_summary.csv", row.names = FALSE,  quote = FALSE)
+write.csv(gene_summary, file = "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/gene_sig_summary_11_2025.csv", row.names = FALSE,  quote = FALSE)
 
 # Now make a stacked barplot showing the proportion that are significant
 # Compute non-significant counts
@@ -547,104 +547,88 @@ sig_bar
 dev.off()
   
 # OK let's also graph the model with the logFC p25.c2 and logFC DC3000
-# Step 1: Prepare metadata and DGEList
-metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
-metadata$time_point <- factor(metadata$time_point, levels = c("t0", "t3"))
-metadata$plant <- factor(metadata$plant)
-
-dge <- DGEList(counts = counts)
-
-dge <- calcNormFactors(dge)
-
-# Step 2: Create design matrix with interaction
-design <- model.matrix(~ treatment * time_point * plant , data = metadata)
-
-# Step 3: Run voom with duplicateCorrelation to adjust for experiment. We've done this already many times. Just making sure we are using the right model
-v <- voom(dge, design, plot = TRUE)
-corfit <- duplicateCorrelation(v, design, block = metadata$experiment)
-v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consensus)
-fit <- lmFit(v, design, block = metadata$experiment, correlation = corfit$consensus)
-fit <- eBayes(fit)
-
-# # Step 4: Extract logFCs. No. I need to do independent contrasts. This does not work.
-# lfc_mat <- fit$coefficients
-# dc3000_lfc <- lfc_mat[, "time_pointt3"]
-# p25c2_lfc <- dc3000_lfc + lfc_mat[, "treatmentp25c2:time_pointt3"]
-# dc_col <- lfc_mat[, "time_pointt3"]
-# dc_ey <- dc3000_lfc + lfc_mat[, "time_pointt3:plantey15_2"]
-# p_col <- dc3000_lfc + lfc_mat[, "treatmentp25c2:time_pointt3"] + lfc_mat[, "time_pointt3:plantey15_2"]
-# p_ey <- dc3000_lfc + lfc_mat[, "treatmentp25c2:time_pointt3:plantey15_2"]
-# make_plant_t3_contrast <- function(strain, plant1, plant2, design) {
-#   paste0(
-#     "(treatment", strain, ":time_pointt3:plant", plant1, 
-#     " - treatment", strain, ":plant", plant1, ") - (treatment", strain, 
-#     ":time_pointt3:plant", plant2, " - treatment", strain, ":plant", plant2, ")"
-#   ) |> makeContrasts(levels = design)
-# }
-
-
-############# Newon 8/4/2025
-# Clean up design matrix
-# Ensure correct factor levels
-metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
-metadata$time_point <- factor(metadata$time_point, levels = c("t0", "t3"))
-metadata$plant <- factor(metadata$plant, levels = c("col_0", "ey15_2"))
-
-# Create design matrix and sanitize column names
-design <- model.matrix(~ treatment * time_point * plant, data = metadata)
-colnames(design) <- make.names(colnames(design))
-
-# Normalize counts and run voom with duplicateCorrelation
-dge <- DGEList(counts = counts)
-dge <- calcNormFactors(dge)
-
-v <- voom(dge, design, plot = TRUE)
-corfit <- duplicateCorrelation(v, design, block = metadata$experiment)
-v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consensus)
-fit <- lmFit(v, design, block = metadata$experiment, correlation = corfit$consensus)
-fit <- eBayes(fit)
+# # Step 1: Prepare metadata and DGEList
+# metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
+# metadata$time_point <- factor(metadata$time_point, levels = c("t0", "t3"))
+# metadata$plant <- factor(metadata$plant)
+# 
+# dge <- DGEList(counts = counts)
+# 
+# dge <- calcNormFactors(dge)
+# 
+# # Step 2: Create design matrix with interaction
+# design <- model.matrix(~ treatment * time_point * plant , data = metadata)
+# 
+# # Step 3: Run voom with duplicateCorrelation to adjust for experiment. We've done this already many times. Just making sure we are using the right model
+# v <- voom(dge, design, plot = TRUE)
+# corfit <- duplicateCorrelation(v, design, block = metadata$experiment)
+# v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consensus)
+# fit <- lmFit(v, design, block = metadata$experiment, correlation = corfit$consensus)
+# fit <- eBayes(fit)
+# 
+# ############# Newon 8/4/2025
+# # Clean up design matrix
+# # Ensure correct factor levels
+# metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
+# metadata$time_point <- factor(metadata$time_point, levels = c("t0", "t3"))
+# metadata$plant <- factor(metadata$plant, levels = c("col_0", "ey15_2"))
+# 
+# # Create design matrix and sanitize column names
+# design <- model.matrix(~ treatment * time_point * plant, data = metadata)
+# colnames(design) <- make.names(colnames(design))
+# 
+# # Normalize counts and run voom with duplicateCorrelation
+# dge <- DGEList(counts = counts)
+# dge <- calcNormFactors(dge)
+# 
+# v <- voom(dge, design, plot = TRUE)
+# corfit <- duplicateCorrelation(v, design, block = metadata$experiment)
+# v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consensus)
+# fit <- lmFit(v, design, block = metadata$experiment, correlation = corfit$consensus)
+# fit <- eBayes(fit)
 
 # Define contrasts for t3 vs t0 within each strain × plant condition
-
+colnames(design2) <- make.names(colnames(design2))
 # 1. DC3000 in col_0 (baseline)
 dc_col0_contrast <- makeContrasts(
-  logFC_DC3000_col0 = time_pointt3,
-  levels = design
+  logFC_P25c2_col0 = 
+    `time_pointt3` + `treatmentp25c2.time_pointt3`,
+  levels = design2
 )
 
 # 2. P25c2 in col_0
 p25_col0_contrast <- makeContrasts(
   logFC_P25c2_col0 = time_pointt3 + treatmentp25c2.time_pointt3,
-  levels = design
+  levels = design2
 )
 
 # 3. DC3000 in ey15_2
 dc_ey15_contrast <- makeContrasts(
   logFC_DC3000_ey15 = time_pointt3 + time_pointt3.plantey15_2,
-  levels = design
+  levels = design2
 )
 
 # 4. P25c2 in ey15_2
 p25_ey15_contrast <- makeContrasts(
   logFC_P25c2_ey15 = time_pointt3 + time_pointt3.plantey15_2 +
     treatmentp25c2.time_pointt3 + treatmentp25c2.time_pointt3.plantey15_2,
-  levels = design
+  levels = design2
 )
 
 # Apply contrasts and extract logFCs
 
-lfc_df <- data.frame(gene = rownames(fit$coefficients))
+lfc_df <- data.frame(gene = rownames(fit2$coefficients))
 
-fit_dc_col0 <- eBayes(contrasts.fit(fit, dc_col0_contrast))
+fit_dc_col0 <- eBayes(contrasts.fit(fit2, dc_col0_contrast))
 lfc_df$logFC_DC3000_col0 <- fit_dc_col0$coefficients[, 1]
 
-fit_p25_col0 <- eBayes(contrasts.fit(fit, p25_col0_contrast))
+fit_p25_col0 <- eBayes(contrasts.fit(fit2, p25_col0_contrast))
 lfc_df$logFC_P25c2_col0 <- fit_p25_col0$coefficients[, 1]
 
-fit_dc_ey <- eBayes(contrasts.fit(fit, dc_ey15_contrast))
+fit_dc_ey <- eBayes(contrasts.fit(fit2, dc_ey15_contrast))
 lfc_df$logFC_DC3000_ey15 <- fit_dc_ey$coefficients[, 1]
 
-fit_p25_ey <- eBayes(contrasts.fit(fit, p25_ey15_contrast))
+fit_p25_ey <- eBayes(contrasts.fit(fit2, p25_ey15_contrast))
 lfc_df$logFC_P25c2_ey15 <- fit_p25_ey$coefficients[, 1]
 
 # Preview result
