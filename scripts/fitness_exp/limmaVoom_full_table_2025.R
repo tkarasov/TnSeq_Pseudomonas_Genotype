@@ -86,8 +86,6 @@ run_voom <- function(dge, design, block = NULL){
   list(v = v, fit = fit)
 }
   
-
-
 filter_meta_counts <- function(column_remove, param_remove, counts, metadata){
   # Relevel factors
   metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
@@ -99,31 +97,6 @@ filter_meta_counts <- function(column_remove, param_remove, counts, metadata){
   return(list(new_meta=new_meta, new_counts=new_count))
 }
 
-summarize_overlap_between_terms <- function(fit, coef1, coef2, pval_cutoff = 0.05) {
-  # Get topTable results for both coefficients
-  tt1 <- topTable(fit, coef = coef1, number = Inf, p.value = pval_cutoff, adjust.method = "BH")
-  tt2 <- topTable(fit, coef = coef2, number = Inf, p.value = pval_cutoff,  adjust.method = "BH")
-  
-  # Gene names
-  genes1 <- rownames(tt1)
-  genes2 <- rownames(tt2)
-  
-  # Overlap
-  overlap_genes <- intersect(genes1, genes2)
-  
-  # Summary statistics
-  summary <- list(
-    coef1 = coef1,
-    coef2 = coef2,
-    num_significant_coef1 = length(genes1),
-    num_significant_coef2 = length(genes2),
-    num_overlap = length(overlap_genes),
-    percent_coef1_in_overlap = round(length(overlap_genes) / length(genes1) * 100, 2),
-    percent_coef2_in_overlap = round(length(overlap_genes) / length(genes2) * 100, 2),
-    overlap_gene_ids = overlap_genes
-  )
-
-}
 
 results_table <- function(fit){
   # Build summary table for all model terms
@@ -171,11 +144,16 @@ result_full <- summarize_overlap_between_terms(
 ######### Second do the analysis with Exp 2
 filtered2 <- filter_meta_counts("experiment", "exp_0001", counts, metadata)
 design2 <- model.matrix(~ treatment * time_point * plant, data = filtered2$new_meta)
-dge2 <- DGEList(counts = filtered2$new_counts)
-dge2 <- calcNormFactors(dge2)
+#dge2 <- DGEList(counts = filtered2$new_counts)
+keep <- filterByExpr(dge2, design2)
+dge2 <- dge2[keep, , keep.lib.sizes = FALSE]
+#dge2 <- calcNormFactors(dge2, method = "TMM")
 res2 <- run_voom(dge2, design2, block = NULL)
-v2 <- res2$v
-fit2 <- res2$fit
+v2 <- voomWithQualityWeights(dge2, design2, plot=TRUE)
+#v2 <- res2$v
+#fit2 <- res2$fit
+fit2 <- lmFit(v2, design2)
+fit2 <- eBayes(fit2)
 
 ######### Now compare the results between the full and fit2
 result_full2 <- summarize_overlap_between_terms(
@@ -368,118 +346,7 @@ dev.off()
 
 #### OK now we have a subset of genes we can follow. Those that show a significant fitness effect in DC3000 over time. We will continue to look at the full model genes. What I want to do with them is ask questions about how many of them are sensitive to the strain genetic background and how many of them are sensitive to the plant genetic background. And I want good graphics to relay this information.
 
-summarize_background_sensitivity_with_3way <- function(
-    fit,
-    coef_time = "time_pointt3",
-    coef_strain_time = "treatmentp25c2:time_pointt3",
-    coef_plant_time = "time_pointt3:plantey15_2",
-    coef_3way = "treatmentp25c2:time_pointt3:plantey15_2",
-    fdr_cutoff = 0.05,
-    plot_type = c("barplot", "upset"),
-    plot = TRUE
-  ) {
-    suppressPackageStartupMessages({
-      library(limma)
-      library(dplyr)
-      library(tidyr)
-      library(ggplot2)
-    })
-    
-    plot_type <- match.arg(plot_type)
-    upset_available <- requireNamespace("ComplexUpset", quietly = TRUE)
-    if (plot_type == "upset" && !upset_available) {
-      warning("ComplexUpset not installed, defaulting to barplot.")
-      plot_type <- "barplot"
-    }
-    
-    # Extract topTables
-    tt_time <- topTable(fit, coef = coef_time, number = Inf, adjust.method = "BH")
-    tt_st <- topTable(fit, coef = coef_strain_time, number = Inf, adjust.method = "BH")
-    tt_pt <- topTable(fit, coef = coef_plant_time, number = Inf, adjust.method = "BH")
-    tt_3w <- topTable(fit, coef = coef_3way, number = Inf, adjust.method = "BH")
-    
-    sig_genes <- rownames(tt_time)[tt_time$adj.P.Val < fdr_cutoff]
-    
-    df <- data.frame(
-      Gene = sig_genes,
-      Time = TRUE,
-      Strain_Time = sig_genes %in% rownames(tt_st)[tt_st[sig_genes, "adj.P.Val"] < fdr_cutoff],
-      Plant_Time = sig_genes %in% rownames(tt_pt)[tt_pt[sig_genes, "adj.P.Val"] < fdr_cutoff],
-      Three_Way = sig_genes %in% rownames(tt_3w)[tt_3w[sig_genes, "adj.P.Val"] < fdr_cutoff]
-    )
-    
-    if (plot) {
-      if (plot_type == "barplot") {
-        df_counted <- df %>%
-          pivot_longer(
-            cols = c(Strain_Time, Plant_Time, Three_Way),
-            names_to = "Effect",
-            values_to = "Significant"
-          ) %>%
-          filter(Significant == TRUE) %>%
-          group_by(Effect) %>%
-          summarise(n = n(), .groups = "drop")
-        
-        total_genes <- nrow(df)  # total number of genes with a significant time effect
-        
-        p <- ggplot(df_counted, aes(x = Effect, y = n, fill = Effect)) +
-          geom_col() +
-          geom_hline(yintercept = total_genes, linetype = "dashed", color = "gray40") +
-          annotate("text", x = 1.5, y = total_genes + 5, label = paste("Total:", total_genes),
-                   hjust = 0, size = 3, family = "Arial", color = "gray20") +
-          scale_fill_manual(values = c(
-            "Strain_Time" = "#E69F00",
-            "Plant_Time" = "#56B4E9",
-            "Three_Way" = "#009E73"
-          )) +
-          labs(
-            x = NULL,
-            y = "Genes with background-sensitive fitness effect (subset of time-effect genes)",
-            title = "Genetic background sensitivity among DC3000 time-responsive genes"
-          ) +
-          theme_minimal(base_family = "Arial") +
-          theme(
-            legend.position = "none",
-            axis.text = element_text(size = 9),
-            axis.title.y = element_text(size = 9)
-          )
-        print(p)
-        
-      } else {
-        library(ComplexUpset)
-        
-        # Create the base theme separately
-        custom_theme <- theme_minimal(base_family = "Arial") +
-          theme(
-            axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
-            axis.title.x = element_text(size = 9)
-          )
-        
-        # Generate the UpSet plot
-        # Generate the UpSet plot
-        ComplexUpset::upset(
-          df,
-          intersect = c("Strain_Time", "Plant_Time", "Three_Way"),
-          name = "Background Effect",
-          base_annotations = list(
-            'Intersection size' = ComplexUpset::intersection_size(
-              text_mapping = aes(label = ..count..)  # <- corrected here
-            )
-          ),
-          themes = ComplexUpset::upset_modify_themes(
-            theme_minimal(base_family = "Arial") +
-              theme(
-                axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
-                axis.title.x = element_text(size = 9)
-              )
-          )
-        )
-       # print(p)
-      }
-    }
-    
-    return(df)
-  }
+
 
 gene_summary <- summarize_background_sensitivity_with_3way(
   fit = fit2,
@@ -507,113 +374,75 @@ threeway_sig <- length(which(gene_summary$Three_Way==TRUE))
 # write the gene_summary table to file to be used in the gene_ontology_contrasts_script
 write.csv(gene_summary, file = "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/gene_sig_summary_11_2025.csv", row.names = FALSE,  quote = FALSE)
 
-# Now make a stacked barplot showing the proportion that are significant
-# Compute non-significant counts
-strain_nonsig <- tot_sig - strain_sig
-plant_nonsig <- tot_sig - plant_sig
-threeway_nonsig <- tot_sig - threeway_sig
 
-# Build dataframe for plotting
-bar_data <- data.frame(
-  Background = rep(c("Strain", "Plant", "Gene-by-Gene"), each = 2),
-  Significance = rep(c("Significant", "Not significant"), 3),
-  Count = c(strain_sig, strain_nonsig, plant_sig, plant_nonsig, threeway_sig, threeway_nonsig)
-)
 
-# Factor ordering
-bar_data$Background <- factor(bar_data$Background, levels = c("Strain", "Plant", "Gene-by-Gene"))
-bar_data$Significance <- factor(bar_data$Significance, levels = c("Not significant", "Significant"))
 
-# Plot
-pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/genetic_background_sensitivity_barplot.pdf", width = 3.5, height = 3.5, family = "Arial")
 
-sig_bar <- ggplot(bar_data, aes(x = Background, y = Count, fill = Significance)) +
-  geom_bar(stat = "identity", width = 0.6) +
-  scale_fill_manual(values = c("Not significant" = "gray85", "Significant" = "#0072B2")) +
-  labs(
-    y = "Number of Time-Sensitive Genes",
-    x = NULL,
-    title = "Genetic background sensitivity of time-responsive genes"
-  ) +
-  theme_minimal(base_family = "Arial") +
-  theme(
-    axis.text = element_text(size = 9),
-    axis.title = element_text(size = 10),
-    plot.title = element_text(size = 10),
-    legend.title = element_blank(),
-    legend.text = element_text(size = 8)
-  )
-sig_bar
-dev.off()
+
+
+
+#################
+# OK I am going crazy with issue with the 
+# 1 Get the fold change values for specific coefficients in the model. 11/2025
+tt_dc3000_time <- topTable(fit2,coef = "time_pointt3",number = Inf,sort.by = "none")
+tt_strain_time_col0 <- topTable(fit2, coef="treatmentp25c2:time_pointt3",number = Inf,sort.by = "none")
+tt_plant_affects_time <- topTable(fit2, coef="time_pointt3:plantey15_2",number = Inf,sort.by = "none")
+tt_plant_strain_specific <- topTable(fit2, coef="treatmentp25c2:time_pointt3:plantey15_2",number = Inf,sort.by = "none")
+
+# # 2. Build one combined table
+result_df <- data.frame(
+  gene = rownames(tt_strain_time_col0),
   
-# OK let's also graph the model with the logFC p25.c2 and logFC DC3000
-# # Step 1: Prepare metadata and DGEList
-# metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
-# metadata$time_point <- factor(metadata$time_point, levels = c("t0", "t3"))
-# metadata$plant <- factor(metadata$plant)
-# 
-# dge <- DGEList(counts = counts)
-# 
-# dge <- calcNormFactors(dge)
-# 
-# # Step 2: Create design matrix with interaction
-# design <- model.matrix(~ treatment * time_point * plant , data = metadata)
-# 
-# # Step 3: Run voom with duplicateCorrelation to adjust for experiment. We've done this already many times. Just making sure we are using the right model
-# v <- voom(dge, design, plot = TRUE)
-# corfit <- duplicateCorrelation(v, design, block = metadata$experiment)
-# v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consensus)
-# fit <- lmFit(v, design, block = metadata$experiment, correlation = corfit$consensus)
-# fit <- eBayes(fit)
-# 
-# ############# Newon 8/4/2025
-# # Clean up design matrix
-# # Ensure correct factor levels
-# metadata$treatment <- factor(metadata$treatment, levels = c("dc3000", "p25c2"))
-# metadata$time_point <- factor(metadata$time_point, levels = c("t0", "t3"))
-# metadata$plant <- factor(metadata$plant, levels = c("col_0", "ey15_2"))
-# 
-# # Create design matrix and sanitize column names
-# design <- model.matrix(~ treatment * time_point * plant, data = metadata)
-# colnames(design) <- make.names(colnames(design))
-# 
-# # Normalize counts and run voom with duplicateCorrelation
-# dge <- DGEList(counts = counts)
-# dge <- calcNormFactors(dge)
-# 
-# v <- voom(dge, design, plot = TRUE)
-# corfit <- duplicateCorrelation(v, design, block = metadata$experiment)
-# v <- voom(dge, design, block = metadata$experiment, correlation = corfit$consensus)
-# fit <- lmFit(v, design, block = metadata$experiment, correlation = corfit$consensus)
-# fit <- eBayes(fit)
-
-# Define contrasts for t3 vs t0 within each strain × plant condition
-colnames(design2) <- make.names(colnames(design2))
-# 1. DC3000 in col_0 (baseline)
-dc_col0_contrast <- makeContrasts(
-  logFC_P25c2_col0 = 
-    `time_pointt3` + `treatmentp25c2.time_pointt3`,
-  levels = design2
+  # logFCs
+  logFC_DC3000_time           = tt_dc3000_time$logFC,
+  logFC_strain_time_col0      = tt_strain_time_col0$logFC,
+  logFC_plant_affects_time    = tt_plant_affects_time$logFC,
+  logFC_plant_strain_specific = tt_plant_strain_specific$logFC,
+  
+  # adjusted p-values
+  padj_DC3000_time           = tt_dc3000_time$adj.P.Val,
+  padj_strain_time_col0      = tt_strain_time_col0$adj.P.Val,
+  padj_plant_affects_time    = tt_plant_affects_time$adj.P.Val,
+  padj_plant_strain_specific = tt_plant_strain_specific$adj.P.Val,
+  
+  row.names = NULL
 )
 
-# 2. P25c2 in col_0
-p25_col0_contrast <- makeContrasts(
-  logFC_P25c2_col0 = time_pointt3 + treatmentp25c2.time_pointt3,
-  levels = design2
+
+# 3. View it
+head(result_df)
+
+# Plot logFC p25.c2 time vs DC3000 time
+df_time <- data.frame(
+  gene = rownames(fit2$coefficients),
+  
+  # Time effect (T3–T0) for DC3000 in col-0
+  logFC_DC3000 = fit2$coefficients[, "time_pointt3"],
+  
+  # Time effect (T3–T0) for P25.c2 in col-0
+  logFC_P25c2 = fit2$coefficients[, "time_pointt3"] +
+    fit2$coefficients[, "treatmentp25c2:time_pointt3"]
 )
 
-# 3. DC3000 in ey15_2
-dc_ey15_contrast <- makeContrasts(
-  logFC_DC3000_ey15 = time_pointt3 + time_pointt3.plantey15_2,
-  levels = design2
-)
+# Plot lfc p25.c2 and ldf DC3000
+ggplot(df_time, aes(x = logFC_DC3000, y = logFC_P25c2)) +
+  geom_point(alpha = 0.4, size = 1.5) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  theme_bw(base_size = 13) +
+  labs(
+    title = "Time response (T3–T0): DC3000 vs P25.c2",
+    x = "DC3000 logFC (T3–T0)",
+    y = "P25.c2 logFC (T3–T0)"
+  )
 
-# 4. P25c2 in ey15_2
-p25_ey15_contrast <- makeContrasts(
-  logFC_P25c2_ey15 = time_pointt3 + time_pointt3.plantey15_2 +
-    treatmentp25c2.time_pointt3 + treatmentp25c2.time_pointt3.plantey15_2,
-  levels = design2
-)
+
+
+
+
+
+
+
+
 
 # Apply contrasts and extract logFCs
 
