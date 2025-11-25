@@ -1,10 +1,19 @@
 # The goal of this script is to take lists of gene names and do gene ontology enrichments.
-#Conclusion as of 7/2025 is that there are enrichments of real basal processes, but not any story that makes a lot of sense.
+#Conclusion as of 7/2025 is that there are enrichments of real basal processes, but not any story that makes a lot of sense#Coming back to this on 11/20/2025.
 # first step is to write a function that takes two lists and gets enrichments
 setwd("~/Google\ Drive/My\ Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
 
 #sig_genes is the output from the limmavoom file for which genes were significant in which interaction.
-sig_genes = read.csv("gene_sig_summary.csv", header = TRUE)
+result_df = read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025.csv", header = TRUE)
+
+sig_genes <- result_df %>%
+  transmute(
+    Gene        = gene,
+    Time        = padj_DC3000_time <= 0.05,
+    Strain_Time = padj_strain_time_col0 <= 0.05,
+    Plant_Time  = padj_plant_affects_time <= 0.05,
+    Three_Way   = padj_plant_strain_specific <= 0.05
+  )
 
 
 # ortholog table for possible genes
@@ -14,12 +23,13 @@ ortholog_tab <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Geno
 # Load biomaRt
 library(biomaRt)
 library(ggplot2)
+# GO.db installed on 11/20/2025
 library(GO.db)
 library(tidyr)
 library(dplyr)
 # I downloaded the uniprot mapping for the DC3000 genome
 uniprot <- read.table(
-  "uniprotkb_proteome_UP000002515_2025_07_01.tsv",
+  "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/uniprotkb_proteome_UP000002515_2025_07_01.tsv",
   header = TRUE,
   sep = "\t",
   comment.char = "#",
@@ -110,7 +120,6 @@ sig_q8 <- universe %>% filter(Gene %in% sig_genes$Gene) %>% pull(uniprot)
 # Example: go_descriptions <- data.frame(GO=c("GO:0001234"), description=c("Example function"))
 # go_sig <- go_sig %>% left_join(go_descriptions, by="GO")
 
-
 go_sig$description <- Term(GOTERM[go_sig$GO])
 # Example list of GO IDs
 go_ids <- go_sig$GO  # or whatever your GO ID column is called
@@ -127,8 +136,6 @@ go_sig <- go_sig %>%
     description = go_terms,
     ontology = go_ont
   )
-
-
 
 compute_go_enrichment <- function(sig_q8, universe_q8, GO_dict) {
   # this function takes a list of target genes and a universe of genes and detects go_enrichments
@@ -160,7 +167,6 @@ compute_go_enrichment <- function(sig_q8, universe_q8, GO_dict) {
   
   return(go_counts)
 }
-
 
 plot_go_enrichment <- function(go_results, fdr_thresh = 0.05, top_n = 20) {
   go_sig <- go_results %>%
@@ -221,7 +227,7 @@ go_time_strain_results <- compute_go_enrichment(time_strain, universe_q8, go_dic
 go_Plant_results <- compute_go_enrichment(Plant_Time, universe_q8, go_dict)
 time <- plot_go_enrichment(go_time_results)
 time_strain <- plot_go_enrichment(go_time_strain_results)
-# plot_go_enrichment(go_Plant_results) None are significant
+plot_go_enrichment(go_Plant_results)
 
 
 
@@ -239,15 +245,6 @@ loadfonts(device = "pdf")
 ggsave("go_enrichment_comparison.tiff", combined_plot, width = 12, height = 6, dpi = 300, compression = "lzw")
 
 #############
-# There is some sort of weird peak in the histogram of fitness values for DC3000 around +1.0. Which genes are these?
-lfc_df <- read.csv("logFCDC3000logFCp25c2_7_2025.csv", header = TRUE)
-lfc_dc_1 <- lfc_df %>% filter(logFC_DC3000>.75) %>% filter(logFC_DC3000<1.75) 
-
-lfc1_Q <- universe %>% filter(Gene %in% lfc_dc_1$Gene) %>% pull(uniprot)
-lfc_universe <- universe %>% pull(uniprot)
-lfc1_GO_enrich <- compute_go_enrichment(lfc1_Q, lfc_universe, go_dict)
-plot_go_enrichment(lfc1_GO_enrich)
-# only thing that is significant is cytoplasm. ??
 
 #I would like to make a heatmap for the genes associated with virulence
 # Search GO.db for terms containing "virulence" or "pathogenesis"
@@ -269,7 +266,8 @@ filtered_go_mappings <- go_mappings %>%
 
 # now I want to do a heatmap for those of those genes that are in the lfc dataframe
 vir_genes <- universe %>% filter(uniprot %in% filtered_go_mappings$Entry) 
-vir_lfc <- lfc_df %>% filter(Gene %in% vir_genes$Gene)
+time_genes <- sig_genes %>% filter(Time==TRUE) 
+vir_lfc <- time_genes %>% filter(Gene %in% vir_genes$Gene)
 vir_lfc$uniprot <- vir_genes[vir_genes$Gene %in% vir_lfc$Gene, c("uniprot")]
 #vir_lfc$Protein.names <- filtered_go_mappings %>% filter(uniprot %in% vir_lfc$uniprot ) %>% pull(Protein.names)
 vir_lfc <- left_join(
@@ -294,7 +292,7 @@ colors <- colorRampPalette(c("#67001F", "white", "#053061"))(99)
 
 # Draw the heatmap and capture the gtable object
 pdf("virulence_gene_log2FC_heatmap.pdf", width = 7, height = 6)  # ~89 mm × variable height
-heatmap_obj <- pheatmap(mat,
+heatmap_obj <- pheatmap(mat, 
                         cluster_rows = TRUE,
                         cluster_cols = FALSE,
                         color = colors,

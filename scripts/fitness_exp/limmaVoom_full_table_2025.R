@@ -262,9 +262,20 @@ df_time <- data.frame(
 )
 
 # Plot lfc p25.c2 and ldf DC3000
+# Compute correlation
+cor_val <- round(cor(df_time$logFC_DC3000, df_time$logFC_P25c2, use = "complete.obs"),2)
+
+# Make the plot
 ggplot(df_time, aes(x = logFC_DC3000, y = logFC_P25c2)) +
   geom_point(alpha = 0.4, size = 1.5) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  annotate(
+    "text",
+    x = Inf, y = -Inf,
+    label = paste0("R = ", round(cor_val, 3)),
+    hjust = 1.1, vjust = -1.1,
+    size = 5
+  ) +
   theme_bw(base_size = 13) +
   labs(
     title = "Time response (T3–T0): DC3000 vs P25.c2",
@@ -272,14 +283,75 @@ ggplot(df_time, aes(x = logFC_DC3000, y = logFC_P25c2)) +
     y = "P25.c2 logFC (T3–T0)"
   )
 
-# So now we have a data table result_df that we can use to look at the breakdown in significance
 
+# So now we have a data table result_df that we can use to look at the breakdown in significance
+write.table(result_df, "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025.csv", sep=",", quote= FALSE )
 
 # I want to make a stacked barplot for the genes associated with strain specific background vs other variables
+# I want a stacked barpolot using the result_df dataframe, with three bars -- one for Strain, one for Plant and one Gene-by-Gene. In each column I want to ask whether all of the time-specific genes in DC3000 which fraction show a strain effect, which fraction show a Plant genotype effect and which show a strainxplant effect
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 
 
-# I want to compare the LFC values for DC3000 vs p25.c2
 
+# 1. Restrict to time-specific DC3000 genes
+rownames(result_df)<-result_df$gene
+dc_time <- result_df %>% 
+  filter(padj_DC3000_time <= 0.05)
+
+
+# 2. Summarise fractions for each effect type
+# 2. Build a small summary table of fractions
+#    (among *time-specific* DC3000 genes)
+frac_df <- tibble(
+  Bar  = c("Strain", "Plant", "Gene-by-Gene"),
+  With = c(
+    mean(dc_time$padj_strain_time_col0      <= 0.05, na.rm = TRUE),  # strain effect
+    mean(dc_time$padj_plant_affects_time    <= 0.05, na.rm = TRUE),  # plant effect
+    mean(dc_time$padj_plant_strain_specific <= 0.05, na.rm = TRUE)   # strain×plant
+  )
+) %>%
+  mutate(Without = 1 - With) %>%
+  pivot_longer(
+    cols = c(With, Without),
+    names_to = "EffectPresence",
+    values_to = "Fraction"
+  ) %>%
+  mutate(
+    EffectPresence = recode(
+      EffectPresence,
+      With    = "Has effect",
+      Without = "No effect"
+    ),
+    Bar = factor(Bar, levels = c("Strain", "Plant", "Gene-by-Gene"))
+  )
+
+# 3. Stacked barplot
+stacked <- ggplot(frac_df, aes(x = Bar, y = Fraction, fill = EffectPresence)) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(
+    values = c(
+      "Has effect" = "#3B4F8C",   # deep desaturated blue
+      "No effect"  = "#C7C9CC"    # soft neutral gray
+    )
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    x = NULL,
+    y = "% of time-specific DC3000 genes",
+    fill = NULL
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  )
+
+# I want to compare (overlay) histograms for the LFC values for DC3000 vs p25.c2
+
+
+#I want to 
 
 
 
