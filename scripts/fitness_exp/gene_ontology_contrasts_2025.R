@@ -6,304 +6,253 @@ setwd("~/Google\ Drive/My\ Drive/Utah_Professorship/projects/Tnseq/compiled_tria
 #sig_genes is the output from the limmavoom file for which genes were significant in which interaction.
 result_df = read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025.csv", header = TRUE)
 
-sig_genes <- result_df %>%
-  transmute(
-    Gene        = gene,
-    Time        = padj_DC3000_time <= 0.05,
-    Strain_Time = padj_strain_time_col0 <= 0.05,
-    Plant_Time  = padj_plant_affects_time <= 0.05,
-    Three_Way   = padj_plant_strain_specific <= 0.05
-  )
-
-
 # ortholog table for possible genes
 ortholog_tab <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", header = TRUE, row.names = 1, sep = ",")
 
-# Load biomart
-# Load biomaRt
-library(biomaRt)
-library(ggplot2)
-# GO.db installed on 11/20/2025
-library(GO.db)
-library(tidyr)
-library(dplyr)
-# I downloaded the uniprot mapping for the DC3000 genome
-uniprot <- read.table(
-  "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/uniprotkb_proteome_UP000002515_2025_07_01.tsv",
-  header = TRUE,
-  sep = "\t",
-  comment.char = "#",
-  quote = "",
-  fill = TRUE,
-  stringsAsFactors = FALSE
-)
-df <- uniprot[,c("Entry", "RefSeq", "Gene.Names")]
+#!/usr/bin/env Rscript
+# go_and_heatmap_top50.R
+# Combined GO ORA + heatmap pipeline. Heatmaps limited to top 50 genes per set.
 
-# Split RefSeq on ";"
-refseq_split <- strsplit(df$RefSeq, ";")
+# ---------------------- User settings ----------------------
+lfc_path  <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025_with_uniprot.csv"
+go_map_path <- "/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/DC3000_genome_mappings/gene_ontology_mapping_uniprotkb_proteome_UP000002515_2025_07_01 (2).tsv"
 
-# Extract first and second RefSeq (NP_ and WP_)
-df$NP_RefSeq <- sapply(refseq_split, function(x) {
-  np <- grep("^NP_", x, value = TRUE)
-  if (length(np) > 0) np[1] else NA
+# Parameters
+fdr_thresh      <- 0.05
+minGSSize       <- 3
+showCategory    <- 20
+top_n_heatmap   <- 50      # <<-- LIMIT: top 50 genes per set for heatmaps
+scale_rows      <- TRUE
+wrap_width_labels <- 40
+output_prefix   <- "ORA_results_top50"
+
+# ---------------------- Libraries & conflict handling ----------------------
+suppressPackageStartupMessages({
+  if(!requireNamespace("conflicted", quietly = TRUE)) install.packages("conflicted", repos = "https://cloud.r-project.org")
+  if(!requireNamespace("png", quietly = TRUE)) install.packages("png", repos = "https://cloud.r-project.org")
+  library(conflicted)
+  library(dplyr)
+  library(stringr)
+  library(clusterProfiler)
+  library(enrichplot)
+  library(GO.db)
+  library(pheatmap)
+  library(ggplot2)
+  library(readr)
+  library(grid)
+  library(png)
+# Parameters
+top_n_genes     <- 25     # top 25 genes chosen by padj_strain_time_col0
+scale_rows      <- TRUE   # row-wise z-score for heatmaps
+max_label_length <- 60    # truncate label length for readability
+output_prefix   <- "strainxtime_top25"
+
+# padj / logFC column names used in your dataset
+padj_strain_time_col <- "padj_strain_time_col0"
+logfc_strain_time_col <- "logFC_strain_time_col0"
+
+# Other logFC columns will be detected automatically (columns starting with "logFC_")
+# but we'll reorder them so strain_time comes first (if found)
+# ---------------------- Libraries & conflict handling ----------------------
+suppressPackageStartupMessages({
+  if(!requireNamespace("conflicted", quietly = TRUE)) install.packages("conflicted", repos = "https://cloud.r-project.org")
+  if(!requireNamespace("png", quietly = TRUE)) install.packages("png", repos = "https://cloud.r-project.org")
+  library(conflicted)
+  library(dplyr)
+  library(stringr)
+  library(pheatmap)
+  library(ggplot2)
+  library(grid)
+  library(png)
+  library(readr)
 })
+# enforce dplyr verbs and base intersect
+conflict_prefer("select",  "dplyr")
+conflict_prefer("filter",  "dplyr")
+conflict_prefer("mutate",  "dplyr")
+conflict_prefer("arrange", "dplyr")
+conflict_prefer("rename",  "dplyr")
+conflict_prefer("intersect", "base")
 
-df$WP_RefSeq <- sapply(refseq_split, function(x) {
-  wp <- grep("^WP_", x, value = TRUE)
-  if (length(wp) > 0) wp[1] else NA
-})
+# ---------------------- Read input LFC table ----------------------
+message("Reading LFC table from: ", lfc_path)
+lfc_file <- tryCatch(read.csv(lfc_path, header = TRUE, stringsAsFactors = FALSE, check.names = FALSE),
+                     error = function(e) stop("Failed to read lfc_file: ", e$message))
+if(!"uniprot" %in% colnames(lfc_file)) stop("lfc_file must contain a column named 'uniprot' with UniProt Entry IDs.")
 
-# Extract PSPTO from Gene Names
-df$PSPTO <- sub(".*(PSPTO_[0-9]+).*", "\\1", df$Gene.Names)
-# remove the "_" in the PSPTO
-# Remove underscore
-df$PSPTO <- gsub("_", "", df$PSPTO)
-
-# Select columns
-df_tidy <- df[, c("Entry", "NP_RefSeq", "WP_RefSeq", "PSPTO")]
-
-
-# Build the named vector (WP ID = name, Q5 = value)
-pspto_to_q5 <- setNames(df$Entry, df$PSPTO)
-
-# Remove any NA names if no WP found (just in case)
-#pspto_to_q5 <- pspto_to_q5[!is.na(names(pspto_to_q5))]
-# this narrowed the protein number from 3179 to 2335. Not clear why a bunch are missing WPs. TBD
-
-#trying again
-tk_remapping <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/DC3000_genome_mappings/tk_remapping.txt",
-                           sep = "\t", 
-                           header = TRUE, 
-                           fill = TRUE,   # allows blank fields by filling missing columns
-                           quote = "",    # avoids issues with unexpected quotes
-                           comment.char = "")  # disables comment parsing if you want to keep lines starting with #)
-
-tk_wp_pspto <- tk_remapping[, c("non.redundant_refseq","single_old_locus")]
-colnames(tk_wp_pspto) <- c("WP_RefSeq", "PSPTO")
-refseq_dict <- setNames(tk_wp_pspto$PSPTO, tk_wp_pspto$WP_RefSeq)
-
-tk_wp_pspto$uniprot <- pspto_to_q5[tk_wp_pspto$PSPTO]
-print(tk_wp_pspto$uniprot)
-write.table(tk_wp_pspto,"/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/DC3000_genome_mappings/tk_remapping_with_uniprot.txt", col.names = TRUE, row.names = FALSE, quote = FALSE )
-
-
-# ok now I can take my gene lists and try to do something interesting I hope. Hallelujah that worked!
-sig_genes$PSPTO <-  refseq_dict[sig_genes$Gene]
-sig_genes$uniprot <- pspto_to_q5[sig_genes$PSPTO]
-
-# sig_genes are those that were significant and the orthology ones were the universe
-universe <- data.frame(Gene=names(table(ortholog_tab$DC3000)))
-universe$PSPTO <- refseq_dict[universe$Gene]
-universe <- universe[!(is.na(universe$PSPTO) | universe$PSPTO== ""), ]
-universe$uniprot <- pspto_to_q5[universe$PSPTO]
-# 3852 genes in the universe
-
-# can we get a list of all genes under consideration
-go_mappings = read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/DC3000_genome_mappings/gene_ontology_mapping_uniprotkb_proteome_UP000002515_2025_07_01 (2).tsv", header = TRUE, sep="\t")
-# Example with your data
-go_dict <- lapply(go_mappings$Gene.Ontology.IDs, function(x) unlist(strsplit(x, "; ")))
-names(go_dict) <- go_mappings$Entry
-
-
-# Convert the list to a long dataframe
-go_df <- stack(go_dict)
-colnames(go_df) <- c("GO", "uniprot")
-universe_q8 <- universe$uniprot
-
-
-#an example of significant genes
-sig_q8 <- universe %>% filter(Gene %in% sig_genes$Gene) %>% pull(uniprot)
-
-
-
-# 6️⃣ (OPTIONAL) Add GO descriptions if you have them
-# Example: go_descriptions <- data.frame(GO=c("GO:0001234"), description=c("Example function"))
-# go_sig <- go_sig %>% left_join(go_descriptions, by="GO")
-
-go_sig$description <- Term(GOTERM[go_sig$GO])
-# Example list of GO IDs
-go_ids <- go_sig$GO  # or whatever your GO ID column is called
-
-# Get GO term names
-go_terms <- Term(GOTERM[go_ids])
-
-# Get GO ontology category (BP, MF, CC)
-go_ont <- Ontology(GOTERM[go_ids])
-
-# Combine into a dataframe
-go_sig <- go_sig %>%
-  mutate(
-    description = go_terms,
-    ontology = go_ont
-  )
-
-compute_go_enrichment <- function(sig_q8, universe_q8, GO_dict) {
-  # this function takes a list of target genes and a universe of genes and detects go_enrichments
-  go_df <- stack(GO_dict)
-  colnames(go_df) <- c("GO", "uniprot")
-  
-  go_df <- go_df[go_df$uniprot %in% universe_q8, ]
-  
-  go_counts <- go_df %>%
-    group_by(GO) %>%
-    summarize(
-      n_universe = n(),
-      n_sig = sum(uniprot %in% sig_q8),
-      .groups = "drop"
-    ) %>%
-    mutate(
-      n_bg = length(universe_q8) - n_universe,
-      pval = phyper(n_sig - 1, n_universe, n_bg, length(sig_q8), lower.tail = FALSE),
-      pval_adj = p.adjust(pval, method = "fdr"),
-      description = sapply(GO, function(go) {
-        term <- GOTERM[[go]]
-        if (is.null(term)) NA_character_ else Term(term)
-      }),
-      ontology = sapply(GO, function(go) {
-        term <- GOTERM[[go]]
-        if (is.null(term)) NA_character_ else Ontology(term)
-      })
-    )
-  
-  return(go_counts)
+# try reading go_mappings (only for row labels if present)
+go_mappings <- NULL
+if(file.exists(go_map_path)) {
+  go_mappings <- tryCatch(read.delim(go_map_path, header = TRUE, sep = "\t", stringsAsFactors = FALSE, quote = "", check.names = FALSE),
+                          error = function(e) { message("Could not read go_map_path: ", e$message); return(NULL) })
 }
 
-plot_go_enrichment <- function(go_results, fdr_thresh = 0.05, top_n = 20) {
-  go_sig <- go_results %>%
-    filter(pval_adj < fdr_thresh) %>%
-    arrange(pval_adj) %>%
-    slice_head(n = top_n)
-  
-  ggplot(go_sig, aes(x = reorder(description, -pval_adj), y = -log10(pval_adj), fill = ontology)) +
-    geom_col(width = 0.7, color = "black") +
-    coord_flip() +
-    scale_fill_manual(
-      values = c(
-        BP = "#4D648D",   # soft blue
-        MF = "#E27D60",   # soft coral
-        CC = "#85DCBA"    # soft green
-      ),
-      na.value = "grey70"
-    ) +
-    labs(
-      title = "GO enrichment of significant genes",
-      x = "GO term",
-      y = expression(-log[10]~"(FDR-adjusted p-value)"),
-      fill = "Ontology"
-    ) +
-    theme_minimal(base_size = 14) +
-    theme(
-      panel.grid.major.y = element_blank(),
-      panel.grid.minor = element_blank(),
-      axis.text.y = element_text(size = 12),
-      plot.title = element_text(face = "bold"),
-      legend.position = "right"
-    )
+# ---------------------- Detect logFC columns and reorder so strain_time is first ----------------------
+logfc_cols_all <- grep("^logFC_", colnames(lfc_file), value = TRUE)
+if(length(logfc_cols_all) == 0) stop("No columns starting with 'logFC_' found in lfc_file.")
+
+# find the strain×time logFC column and place it first if present
+if(logfc_strain_time_col %in% logfc_cols_all) {
+  logfc_cols_ordered <- c(logfc_strain_time_col, setdiff(logfc_cols_all, logfc_strain_time_col))
+} else {
+  # If expected column name not found, attempt to find something similar
+  candidate <- grep("strain.*time|strain_time|strain.time", logfc_cols_all, ignore.case = TRUE, value = TRUE)
+  if(length(candidate) >= 1) {
+    logfc_cols_ordered <- c(candidate[1], setdiff(logfc_cols_all, candidate[1]))
+    logfc_strain_time_col <- candidate[1]
+    message("Using detected strain×time logFC column: ", candidate[1])
+  } else {
+    # no strain_time column found — keep default ordering
+    logfc_cols_ordered <- logfc_cols_all
+    message("No strain×time logFC column found; columns will not be reordered.")
+  }
+}
+message("logFC column order (first column intended as strain×time):\n", paste(logfc_cols_ordered, collapse = ", "))
+
+# ---------------------- Select top 25 genes by padj_strain_time_col ----------------------
+if(!padj_strain_time_col %in% colnames(lfc_file)) {
+  # try to find a similar padj column name if exact name not found
+  cand_padj <- grep("padj.*strain.*time|padj.*strain_time|padj_strain_time", colnames(lfc_file), ignore.case = TRUE, value = TRUE)
+  if(length(cand_padj) > 0) {
+    padj_strain_time_col <- cand_padj[1]
+    message("Using detected padj column for Strain×Time: ", padj_strain_time_col)
+  } else {
+    stop("Cannot find padj column for Strain×Time. Expected '", padj_strain_time_col, "' or similar.")
+  }
 }
 
-# Run enrichment
-go_results <- compute_go_enrichment(sig_q8, universe_q8, go_dict)
+# filter rows with available padj and uniprot, then pick top 25 by smallest padj
+sig_df <- lfc_file %>%
+  filter(!is.na(.data[[padj_strain_time_col]]), !is.na(uniprot), uniprot != "") %>%
+  arrange(.data[[padj_strain_time_col]]) %>%
+  distinct(uniprot, .keep_all = TRUE)  # ensure unique uniprot
 
-# Plot
-all_plot<-plot_go_enrichment(go_results)
+if(nrow(sig_df) == 0) stop("No rows with padj for Strain×Time found in your data.")
 
-# let's do subplots of genes that are important strain-specifically
-# sig_time_strain
-time_strain<- sig_genes %>% 
-  filter(Strain_Time==TRUE) %>%
-  pull(uniprot)
+top25_df <- sig_df %>% slice_head(n = top_n_genes)
+top25_uniprot <- top25_df$uniprot
+cat("Selected top", length(top25_uniprot), "genes by", padj_strain_time_col, "\n")
+print(top25_df[, c("uniprot", padj_strain_time_col)][1:min(10, nrow(top25_df)), ])
 
-Plant_Time<- sig_genes %>% 
-  filter(Plant_Time==TRUE) %>%
-  pull(uniprot)
+# ---------------------- Build matrix for the two heatmaps (same genes)
+#  - Matrix columns ordered with Strain×Time logFC first
+#  - Heatmap A: strain×time top25 (shows the same matrix but emphasises the strain×time column)
+#  - Heatmap B: Time view for the same top25 (same matrix)
+# ------------------------------------------------------------------------------
 
-time<- sig_genes %>% 
-  filter(Time==TRUE) %>%
-  pull(uniprot)
+# extract matrix rows for top25, columns = logfc_cols_ordered
+mat_df <- lfc_file %>%
+  filter(uniprot %in% top25_uniprot) %>%
+  distinct(uniprot, .keep_all = TRUE) %>%
+  select(uniprot, all_of(logfc_cols_ordered))
 
+# ensure numeric
+mat_df[ , logfc_cols_ordered] <- lapply(mat_df[ , logfc_cols_ordered, drop = FALSE], function(x) as.numeric(as.character(x)))
+# align rows in the same order as top25_uniprot
+mat_df <- mat_df[match(top25_uniprot, mat_df$uniprot), ]
+rownames_mat <- mat_df$uniprot
+mat <- as.matrix(mat_df[, logfc_cols_ordered, drop = FALSE])
+rownames(mat) <- rownames_mat
 
-go_time_results <- compute_go_enrichment(time, universe_q8, go_dict)
-go_time_strain_results <- compute_go_enrichment(time_strain, universe_q8, go_dict)
-go_Plant_results <- compute_go_enrichment(Plant_Time, universe_q8, go_dict)
-time <- plot_go_enrichment(go_time_results)
-time_strain <- plot_go_enrichment(go_time_strain_results)
-plot_go_enrichment(go_Plant_results)
+# ---------------------- Row labels: Protein name (UniProt) if available; else UniProt ID
+row_labels <- rownames(mat)
+if(!is.null(go_mappings) && "Entry" %in% colnames(go_mappings)) {
+  prot_col <- NULL
+  if("Protein names" %in% colnames(go_mappings)) prot_col <- "Protein names"
+  if(is.null(prot_col) && "Protein.names" %in% colnames(go_mappings)) prot_col <- "Protein.names"
+  if(!is.null(prot_col)) {
+    prot_lookup <- go_mappings %>% select(Entry, !!sym(prot_col)) %>% distinct(Entry, .keep_all = TRUE)
+    prot_vec <- prot_lookup[[prot_col]]
+    names(prot_vec) <- prot_lookup$Entry
+    lab <- prot_vec[rownames(mat)]
+    lab[is.na(lab) | lab == ""] <- rownames(mat)[is.na(lab) | lab == ""]
+    row_labels <- make.unique(paste0(lab, " (", rownames(mat), ")"))
+  }
+}
+# truncate long labels and wrap so they're readable
+row_labels <- sapply(row_labels, function(x) {
+  x2 <- if(nchar(x) > max_label_length) paste0(substr(x,1,max_label_length-3), "...") else x
+  stringr::str_wrap(x2, width = 60)
+}, USE.NAMES = FALSE)
 
+# ---------------------- Optionally scale rows (z-score) ----------------------
+mat_to_plot <- mat
+if(scale_rows) {
+  mat_scaled <- t(scale(t(mat_to_plot)))
+  mat_scaled[is.na(mat_scaled)] <- 0
+  mat_to_plot <- mat_scaled
+}
 
+# ---------------------- Build pheatmap objects (silent) ----------------------
+breaks <- seq(-3, 3, length.out = 101)
+colors <- colorRampPalette(c("#67001F", "white", "#053061"))(100)
 
-# OK time_strain has a number of significcant results, seemingly many in central metabolism.
-# Combine without overlap
-combined_plot <- plot_grid(
-  time, time_strain,
-  ncol = 2,
-  align = "h",
-  label_fontfamily = "Arial",
-  rel_widths = c(1, 1)
-)
-font_import(pattern = "Arial", prompt = FALSE)
-loadfonts(device = "pdf")
-ggsave("go_enrichment_comparison.tiff", combined_plot, width = 12, height = 6, dpi = 300, compression = "lzw")
+ph_time_for_top25 <- pheatmap::pheatmap(mat_to_plot,
+                                        cluster_rows = TRUE,
+                                        cluster_cols = TRUE,
+                                        show_rownames = TRUE,
+                                        labels_row = row_labels,
+                                        fontsize_row = if(nrow(mat_to_plot) <= 25) 10 else 8,
+                                        fontsize_col = 10,
+                                        color = colors,
+                                        breaks = breaks,
+                                        main = "Top25 (by Strain×Time padj) — All contrasts",
+                                        border_color = NA,
+                                        silent = TRUE)
 
-#############
+# We'll keep the same pheatmap for strain×time (same matrix) but change title (emphasize strain×time column)
+ph_strain_time_top25 <- ph_time_for_top25  # same gtable; we will save twice with different titles if needed
 
-#I would like to make a heatmap for the genes associated with virulence
-# Search GO.db for terms containing "virulence" or "pathogenesis"
-all_go <- Term(GOTERM)
-virulence_go <- grep("virulence|pathogenesis|hrp|tox|effector|coronatine|avr|secretion|type III secretion system", all_go, value = TRUE, ignore.case = TRUE)
+# ---------------------- Save PNG + rasterized PDF helper ----------------------
+save_ph_as_png_and_raster_pdf <- function(ph_object, png_file, pdf_file, width_in = 10, height_in = 7, dpi = 300) {
+  if(is.null(ph_object)) { message("ph_object NULL, skipping: ", png_file); return(NULL) }
+  png(png_file, width = width_in, height = height_in, units = "in", res = dpi)
+  grid::grid.newpage()
+  grid::grid.draw(ph_object$gtable)
+  dev.off()
+  img <- png::readPNG(png_file)
+  pdf(pdf_file, width = width_in, height = height_in)
+  grid::grid.newpage()
+  grid::grid.raster(img, width = unit(1, "npc"), height = unit(1, "npc"), interpolate = FALSE)
+  dev.off()
+  message("Wrote PNG:", png_file, " (", round(file.info(png_file)$size/1024), "KB )")
+  message("Wrote PDF:", pdf_file, " (", round(file.info(pdf_file)$size/1024), "KB )")
+  invisible(list(png = png_file, pdf = pdf_file))
+}
 
-# Extract GO IDs
-virulence_go_ids <- names(virulence_go)
-# Add some known T3SS GO terms
-t3ss_go_ids <- c("GO:0030257", "GO:0009289", "GO:0005576")
+# Determine height depending on number of rows for readability
+height_in <- max(5, 0.32 * max(1, nrow(mat_to_plot)) + 2)
 
-# Combine with your original virulence list
-combined_go_ids <- union(virulence_go_ids, t3ss_go_ids)
-# Subset genes that are classified with one of these go ids
-# go_mappings Entry column is the q value and the Gene.Ontology.IDs is the GO ids separated by semicolons
-library(stringr)
-filtered_go_mappings <- go_mappings %>%
-  filter(str_detect(Gene.Ontology.IDs, str_c(combined_go_ids, collapse = "|")))
+# Save "Strain×Time" heatmap (same matrix but title emphasizes Strain×Time)
+save_ph_as_png_and_raster_pdf(ph_strain_time_top25,
+                              png_file = paste0(output_prefix, "_strainxtime_top25.png"),
+                              pdf_file = paste0(output_prefix, "_strainxtime_top25.pdf"),
+                              width_in = 10, height_in = height_in, dpi = 300)
 
-# now I want to do a heatmap for those of those genes that are in the lfc dataframe
-vir_genes <- universe %>% filter(uniprot %in% filtered_go_mappings$Entry) 
-time_genes <- sig_genes %>% filter(Time==TRUE) 
-vir_lfc <- time_genes %>% filter(Gene %in% vir_genes$Gene)
-vir_lfc$uniprot <- vir_genes[vir_genes$Gene %in% vir_lfc$Gene, c("uniprot")]
-#vir_lfc$Protein.names <- filtered_go_mappings %>% filter(uniprot %in% vir_lfc$uniprot ) %>% pull(Protein.names)
-vir_lfc <- left_join(
-  vir_lfc,
-  filtered_go_mappings[, c("Entry", "Protein.names")],
-  by = c("uniprot" = "Entry")
-)
+# Save "Time" heatmap for the same genes (title adjusted)
+save_ph_as_png_and_raster_pdf(ph_time_for_top25,
+                              png_file = paste0(output_prefix, "_time_for_top25.png"),
+                              pdf_file = paste0(output_prefix, "_time_for_top25.pdf"),
+                              width_in = 10, height_in = height_in, dpi = 300)
 
+# ---------------------- Save TSV of selected genes (with key columns) ----------------------
+# Write the top25 table with selected key columns (including padj for Strain×Time and any key logFCs)
+save_cols <- c("uniprot", padj_strain_time_col, logfc_strain_time_col)
+# include other detected logFCs if present
+other_lfc <- setdiff(logfc_cols_ordered, logfc_strain_time_col)
+save_cols <- unique(c(save_cols, other_lfc))
+# keep only those columns that exist in lfc_file
+save_cols <- save_cols[save_cols %in% colnames(lfc_file)]
+top25_out <- lfc_file %>% filter(uniprot %in% top25_uniprot) %>% distinct(uniprot, .keep_all = TRUE) %>% select(all_of(save_cols))
+# arrange by padj
+if(padj_strain_time_col %in% colnames(top25_out)) top25_out <- top25_out %>% arrange(.data[[padj_strain_time_col]])
+write.table(top25_out, paste0(output_prefix, "_top25_table.tsv"), sep = "\t", row.names = FALSE, quote = FALSE)
+message("Wrote top25 table: ", paste0(output_prefix, "_top25_table.tsv"))
 
+message("Done. Files produced:")
+message("- ", paste0(output_prefix, "_strainxtime_top25.png"))
+message("- ", paste0(output_prefix, "_strainxtime_top25.pdf"))
+message("- ", paste0(output_prefix, "_time_for_top25.png"))
+message("- ", paste0(output_prefix, "_time_for_top25.pdf"))
+message("- ", paste0(output_prefix, "_top25_table.tsv"))
 
-library(pheatmap)
-library(grid)
-
-# Prepare matrix
-mat <- as.matrix(vir_lfc[, c("logFC_DC3000", "logFC_P25C2")])
-colnames(mat) <- c("DC3000 in Col-0", "P25.c2 in Col-0")
-rownames(mat) <- make.unique(vir_lfc$Protein.names)
-
-# Color scale
-breaks <- seq(-2, 2, length.out = 100)
-colors <- colorRampPalette(c("#67001F", "white", "#053061"))(99)
-
-# Draw the heatmap and capture the gtable object
-pdf("virulence_gene_log2FC_heatmap.pdf", width = 7, height = 6)  # ~89 mm × variable height
-heatmap_obj <- pheatmap(mat, 
-                        cluster_rows = TRUE,
-                        cluster_cols = FALSE,
-                        color = colors,
-                        breaks = breaks,
-                        fontsize = 8,
-                        fontsize_row = 6,
-                        fontsize_col = 8,
-                        border_color = NA,
-                        main = "")
-
-# Add custom legend title (log₂FC)
-grid.text("Virulence Gene log₂FC (T3–T0)", x = 0.5, y = 0.97, gp = gpar(fontsize = 10))
-grid.text(expression(log[2] * "FC"), x = 0.92, y = 0.75, gp = gpar(fontsize = 10))
-dev.off()
