@@ -1,9 +1,8 @@
 # May 2025 This script takes the full counts matrix from the many trials and will do subsetting and limma voom analysis. The goal is to ask what percentage of sig genes are genetic background specific in their behavior. In August 2025 Effie determined that the original counts may have been problematic and redid the counts table.
 # oh no, that table must messed up. The final counts table is in 10/2025
-#modified August 2025
+#modified December 2025
 library(limma)
 library(tidyr)
-library(dplyr)
 library(ggplot2)
 library(lme4)
 library(randomForest)
@@ -11,6 +10,8 @@ library(caret)
 library(matrixStats)
 library(grid)  # For theme text customization
 library(edgeR)
+library(cowplot)
+library(dplyr)
 
 #functions
 extract_timepoint_logfc_per_experiment <- function(voom_obj, metadata, experiment_col, design_formula) {
@@ -96,30 +97,6 @@ results_table <- function(fit){
   })
   
 }
-# Extract top genes for the interaction term
-top_interaction <- topTable(fit, coef = "treatmentp25c2:time_pointt3", number = Inf, adjust.method = "BH")
-
-# Build summary table for all model terms
-results_summary <- lapply(colnames(fit$coefficients), function(term) {
-  tt <- topTable(fit, coef = term, number = Inf, sort.by = "none")
-  
-  sig_genes <- sum(tt$adj.P.Val < 0.05, na.rm = TRUE)
-  min_lfc   <- min(tt$logFC, na.rm = TRUE)
-  max_lfc   <- max(tt$logFC, na.rm = TRUE)
-  mean_lfc  <- mean(tt$logFC, na.rm = TRUE)
-  
-  data.frame(
-    term = term,
-    num_significant = sig_genes,
-    mean_logFC = mean_lfc,
-    min_logFC = min_lfc,
-    max_logFC = max_lfc
-  )
-})
-
-
-
-
 
 # setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
 setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output")
@@ -261,12 +238,25 @@ df_time <- data.frame(
     fit2$coefficients[, "treatmentp25c2:time_pointt3"]
 )
 
+# Plot logFC  DC3000 in Eyach vs Col-0
+df_plant <- data.frame(
+  gene = rownames(fit2$coefficients),
+  
+  # Time effect (T3–T0) for DC3000 in col-0
+  logFC_DC3000_col0 = fit2$coefficients[, "time_pointt3"],
+  
+  # Time effect (T3–T0) for P25.c2 in col-0
+  logFC_DC3000_Eyach = fit2$coefficients[, "time_pointt3"] +
+    fit2$coefficients[, "time_pointt3:plantey15_2"]
+)
+
+
 # Plot lfc p25.c2 and ldf DC3000
 # Compute correlation
 cor_val <- round(cor(df_time$logFC_DC3000, df_time$logFC_P25c2, use = "complete.obs"),2)
-
+cor_val2 <- round(cor(df_plant$logFC_DC3000_col0, df_plant$logFC_DC3000_Eyach, use = "complete.obs"),2)
 # Make the plot
-ggplot(df_time, aes(x = logFC_DC3000, y = logFC_P25c2)) +
+strain_plot <- ggplot(df_time, aes(x = logFC_DC3000, y = logFC_P25c2)) +
   geom_point(alpha = 0.4, size = 1.5) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   annotate(
@@ -283,15 +273,32 @@ ggplot(df_time, aes(x = logFC_DC3000, y = logFC_P25c2)) +
     y = "P25.c2 logFC (T3–T0)"
   )
 
+plant_genot_plot <- ggplot(df_plant, aes(x = logFC_DC3000_col0, y = logFC_DC3000_Eyach)) +
+  geom_point(alpha = 0.4, size = 1.5) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  annotate(
+    "text",
+    x = Inf, y = -Inf,
+    label = paste0("R = ", round(cor_val2, 3)),
+    hjust = 1.1, vjust = -1.1,
+    size = 5
+  ) +
+  theme_bw(base_size = 13) +
+  labs(
+    title = "Time response (T3–T0): DC3000 vs P25.c2",
+    x = "DC3000 in Col-0 logFC (T3–T0)",
+    y = "DC3000 in Eyach logFC (T3–T0)"
+  )
+
+pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/correspondence_Strain_Plant.pdf")
+plot_grid(strain_plot, plant_genot_plot)
+dev.off()
 
 # So now we have a data table result_df that we can use to look at the breakdown in significance
 write.table(result_df, "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025.csv", sep=",", quote= FALSE )
 
 # I want to make a stacked barplot for the genes associated with strain specific background vs other variables
 # I want a stacked barpolot using the result_df dataframe, with three bars -- one for Strain, one for Plant and one Gene-by-Gene. In each column I want to ask whether all of the time-specific genes in DC3000 which fraction show a strain effect, which fraction show a Plant genotype effect and which show a strainxplant effect
-library(dplyr)
-library(tidyr)
-library(ggplot2)
 
 
 
@@ -347,11 +354,22 @@ stacked <- ggplot(frac_df, aes(x = Bar, y = Fraction, fill = EffectPresence)) +
     legend.position = "right",
     axis.text.x = element_text(angle = 0, hjust = 0.5)
   )
+pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/stacked_barplot.pdf")
+stacked
+dev.off()
+
 
 # I want to compare (overlay) histograms for the LFC values for DC3000 vs p25.c2
 
 
-#I want to 
+
+
+
+#I want to Graph ten genes that show time specific effects for DC3000
+
+
+
+#I want to Graph ten genes that show strain-specific effects for DC3000
 
 
 
