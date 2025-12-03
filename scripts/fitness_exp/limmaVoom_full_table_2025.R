@@ -222,9 +222,163 @@ result_df <- data.frame(
   row.names = NULL
 )
 
+# ----- Plot top genes: time-specific and strain-specific -------
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+library(cowplot)
 
-# 3. View it
-head(result_df)
+# Safety checks
+if(!exists("fit2") || !exists("v2") || !exists("result_df")){
+  stop("fit2, v2 or result_df not found in the workspace. Run the voom/fit and result table first.")
+}
+
+# Use fit2 coefficients/topTables computed already:
+# tt_dc3000_time and tt_strain_time_col0 were created earlier in your script.
+# If not present, create them:
+if(!exists("tt_dc3000_time")){
+  tt_dc3000_time <- topTable(fit2, coef = "time_pointt3", number = Inf, sort.by = "none")
+}
+if(!exists("tt_strain_time_col0")){
+  tt_strain_time_col0 <- topTable(fit2, coef = "treatmentp25c2:time_pointt3", number = Inf, sort.by = "none")
+}
+
+# Choose top 10 by adjusted p-value (smallest adj.P.Val)
+top_time_genes   <- rownames(tt_dc3000_time[order(tt_dc3000_time$adj.P.Val), ])[1:10]
+top_strain_genes <- rownames(tt_strain_time_col0[order(tt_strain_time_col0$adj.P.Val), ])[1:10]
+
+# Remove any NAs if fewer than 10 available
+top_time_genes   <- top_time_genes[!is.na(top_time_genes)]
+top_strain_genes <- top_strain_genes[!is.na(top_strain_genes)]
+
+# Print selected gene lists
+message("Top time-specific genes (T3 vs T0):\n", paste(top_time_genes, collapse = ", "))
+message("Top strain-specific-time interaction genes:\n", paste(top_strain_genes, collapse = ", "))
+
+# Compute fraction of DC3000 time-specific genes that are strain-specific
+# Use your result_df with padj columns
+if(!"padj_DC3000_time" %in% colnames(result_df) || !"padj_strain_time_col0" %in% colnames(result_df)){
+  stop("result_df missing expected padj columns. Make sure result_df contains padj_DC3000_time and padj_strain_time_col0.")
+}
+dc_time_all <- result_df %>% filter(padj_DC3000_time <= 0.05)
+n_dc_time <- nrow(dc_time_all)
+n_dc_time_and_strain <- sum(dc_time_all$padj_strain_time_col0 <= 0.05, na.rm = TRUE)
+pct_bg_specific <- if(n_dc_time>0) 100 * n_dc_time_and_strain / n_dc_time else NA
+
+message("Number DC3000 time-specific genes (padj <= 0.05): ", n_dc_time)
+message("Of those, number with significant strain×time (padj <= 0.05): ", n_dc_time_and_strain)
+message(sprintf("Percent that are genetic-background-specific: %.1f%%", pct_bg_specific))
+
+# ---- Prepare expression table (log2-CPM) -------
+# v2$E is voom log2-CPM matrix with genes as rows and samples as columns.
+expr_mat <- v2$E
+# Check gene names are rows
+if(is.null(rownames(expr_mat))){
+  stop("v2$E has no rownames (genes).")
+}
+
+# Make sample metadata: ensure it matches columns of expr_mat
+meta_plot <- filtered2_comp$new_meta  # use filtered2_comp metadata used for fit2
+# If your metadata has rownames as sample names, ensure they match colnames of expr_mat
+if(!all(colnames(expr_mat) %in% rownames(meta_plot))){
+  # try metadata assigned earlier named 'metadata' maybe:
+  if(all(colnames(expr_mat) %in% rownames(metadata))){
+    meta_plot <- metadata[colnames(expr_mat), ]
+  } else {
+    stop("Sample names in v2$E do not match rownames in metadata. Fix sample naming before plotting.")
+  }
+} else {
+  meta_plot <- meta_plot[colnames(expr_mat), ]
+}
+
+# Create plotting function that builds a tidy data.frame for selected genes
+make_tidy_for_genes <- function(gene_vector){
+  genes_present <- gene_vector[gene_vector %in% rownames(expr_mat)]
+  if(length(genes_present)==0) stop("No selected genes found in voom expression matrix.")
+  sub_expr <- expr_mat[genes_present, , drop=FALSE]
+  # transpose and melt
+  sub_df <- as.data.frame(t(sub_expr))
+  sub_df$Sample <- rownames(sub_df)
+  sub_df <- cbind(sub_df, meta_plot[rownames(sub_df), c("treatment","plant","time_point")])
+  long <- reshape2::melt(sub_df, id.vars = c("Sample","treatment","plant","time_point"),
+                         variable.name = "gene", value.name = "log2CPM")
+  # ensure factors
+  long$time_point <- factor(long$time_point, levels = c("t0","t3"))
+  long$treatment  <- factor(long$treatment)
+  long$plant      <- factor(long$plant)
+  return(long)
+}
+
+# Prepare tidy data
+tidy_time   <- make_tidy_for_genes(top_time_genes)
+tidy_strain <- make_tidy_for_genes(top_strain_genes)
+
+# Summarise per group: mean and sd (treatment x time_point); keep plant as facet or color if you prefer
+summarise_group <- function(tidy_df){
+  tidy_df %>%
+    group_by(gene, treatment, plant, time_point) %>%
+    summarise(mean = mean(log2CPM, na.rm=TRUE),
+              sd   = sd(log2CPM, na.rm=TRUE),
+              n    = n(), .groups = "drop") %>%
+    mutate(se = sd / sqrt(pmax(n,1)))
+}
+
+sum_time   <- summarise_group(tidy_time)
+sum_strain <- summarise_group(tidy_strain)
+
+# Plotting function: facet by gene, color by treatment (strain), shape by plant
+plot_gene_set <- function(summary_df, raw_df, title_str){
+  p <- ggplot(summary_df, aes(x = time_point, y = mean, group = treatment, color = treatment)) +
+    geom_line(aes(linetype = treatment), position = position_dodge(width=0.1)) +
+    geom_point(data = raw_df, aes(x = time_point, y = log2CPM, color = treatment, shape = plant),
+               alpha = 0.5, size = 1, position = position_jitter(width = 0.05, height = 0)) +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.12, position = position_dodge(width=0.1)) +
+    facet_wrap(~ gene, scales = "free_y", ncol = 5) +
+    theme_bw(base_size = 11) +
+    labs(title = title_str,
+         x = "Time point",
+         y = "log2-CPM (voom)",
+         color = "Strain",
+         shape = "Plant genotype") +
+    theme(strip.text = element_text(size=8),
+          axis.text.x = element_text(size=9))
+  return(p)
+}
+
+p_top_time   <- plot_gene_set(sum_time, tidy_time, "Top 10 genes: time-specific (T3 vs T0)")
+p_top_strain <- plot_gene_set(sum_strain, tidy_strain, "Top 10 genes: strain-specific time effect")
+
+# Save plots
+outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/plots"
+if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+
+pdf(file.path(outdir, "top10_time_specific_genes_voom_log2CPM.pdf"), width = 12, height = 8)
+print(p_top_time)
+dev.off()
+
+pdf(file.path(outdir, "top10_strain_time_interaction_genes_voom_log2CPM.pdf"), width = 12, height = 8)
+print(p_top_strain)
+dev.off()
+
+# Optional: combined figure (stacked)
+combined <- plot_grid(p_top_time + theme(legend.position = "bottom"),
+                      p_top_strain + theme(legend.position = "bottom"),
+                      ncol = 1, labels = c("A","B"), rel_heights = c(1,1))
+pdf(file.path(outdir, "top10_time_vs_strain_time_combined.pdf"), width = 12, height = 16)
+print(combined)
+dev.off()
+
+message("Plots written to: ", outdir)
+
+
+
+
+
+
+
+
+
+
 
 # Plot logFC p25.c2 time vs DC3000 time
 df_time <- data.frame(
@@ -361,15 +515,213 @@ dev.off()
 
 # I want to compare (overlay) histograms for the LFC values for DC3000 vs p25.c2
 
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Recreate df_time if missing (uses fit2)
+if(!exists("df_time")){
+  if(!exists("fit2")) stop("fit2 not found. Run voom/lmFit first.")
+  df_time <- data.frame(
+    gene = rownames(fit2$coefficients),
+    logFC_DC3000 = fit2$coefficients[, "time_pointt3"],
+    logFC_P25c2  = fit2$coefficients[, "time_pointt3"] + fit2$coefficients[, "treatmentp25c2:time_pointt3"]
+  )
+}
+
+# Long format so ggplot makes a legend
+df_long <- df_time %>%
+  select(gene, logFC_DC3000, logFC_P25c2) %>%
+  pivot_longer(cols = starts_with("logFC_"),
+               names_to = "group",
+               values_to = "log2FC") %>%
+  mutate(group = recode(group,
+                        logFC_DC3000 = "DC3000",
+                        logFC_P25c2  = "P25.c2")) %>%
+  filter(!is.na(log2FC))
+
+# Colors
+pal <- c("DC3000" = "#3B4F8C", "P25.c2" = "#D95F02")
+
+# Overlaid histograms + density lines, with legend
+hist_density_plot <- ggplot(df_long, aes(x = log2FC, fill = group, color = group)) +
+  geom_histogram(aes(y = ..density..), position = "identity", alpha = 0.25, bins = 60, color = NA) +
+  geom_density(size = 0.9) +
+  scale_fill_manual(values = pal, name = "Strain") +
+  scale_color_manual(values = pal, guide = FALSE) + # density lines colored; hide duplicate legend
+  labs(title = "Distribution of log2FC (T3 vs T0): DC3000 vs P25.c2",
+       x = "log2 fold change (T3 - T0)",
+       y = "Density") +
+  theme_classic(base_size = 13) +
+  theme(legend.position = c(0.8, 0.8),
+        legend.background = element_rect(fill = "white", color = NA))
+
+# show and optionally save
+print(hist_density_plot)
+
+# save (adjust path if needed)
+outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/plots"
+if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+ggsave(filename = file.path(outdir, "hist_density_overlay_with_legend.pdf"),
+       plot = hist_density_plot, width = 8, height = 5)
+message("Saved to: ", file.path(outdir, "hist_density_overlay_with_legend.pdf"))
 
 
 
 
 #I want to Graph ten genes that show time specific effects for DC3000
-
-
-
 #I want to Graph ten genes that show strain-specific effects for DC3000
+# ----- Plot top genes: time-specific and strain-specific -------
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+library(cowplot)
+
+# Safety checks
+if(!exists("fit2") || !exists("v2") || !exists("result_df")){
+  stop("fit2, v2 or result_df not found in the workspace. Run the voom/fit and result table first.")
+}
+
+# Use fit2 coefficients/topTables computed already:
+# tt_dc3000_time and tt_strain_time_col0 were created earlier in your script.
+# If not present, create them:
+if(!exists("tt_dc3000_time")){
+  tt_dc3000_time <- topTable(fit2, coef = "time_pointt3", number = Inf, sort.by = "none")
+}
+if(!exists("tt_strain_time_col0")){
+  tt_strain_time_col0 <- topTable(fit2, coef = "treatmentp25c2:time_pointt3", number = Inf, sort.by = "none")
+}
+
+# Choose top 10 by adjusted p-value (smallest adj.P.Val)
+top_time_genes   <- rownames(tt_dc3000_time[order(tt_dc3000_time$adj.P.Val), ])[1:10]
+top_strain_genes <- rownames(tt_strain_time_col0[order(tt_strain_time_col0$adj.P.Val), ])[1:10]
+
+# Remove any NAs if fewer than 10 available
+top_time_genes   <- top_time_genes[!is.na(top_time_genes)]
+top_strain_genes <- top_strain_genes[!is.na(top_strain_genes)]
+
+# Print selected gene lists
+message("Top time-specific genes (T3 vs T0):\n", paste(top_time_genes, collapse = ", "))
+message("Top strain-specific-time interaction genes:\n", paste(top_strain_genes, collapse = ", "))
+
+# Compute fraction of DC3000 time-specific genes that are strain-specific
+# Use your result_df with padj columns
+if(!"padj_DC3000_time" %in% colnames(result_df) || !"padj_strain_time_col0" %in% colnames(result_df)){
+  stop("result_df missing expected padj columns. Make sure result_df contains padj_DC3000_time and padj_strain_time_col0.")
+}
+dc_time_all <- result_df %>% filter(padj_DC3000_time <= 0.05)
+n_dc_time <- nrow(dc_time_all)
+n_dc_time_and_strain <- sum(dc_time_all$padj_strain_time_col0 <= 0.05, na.rm = TRUE)
+pct_bg_specific <- if(n_dc_time>0) 100 * n_dc_time_and_strain / n_dc_time else NA
+
+message("Number DC3000 time-specific genes (padj <= 0.05): ", n_dc_time)
+message("Of those, number with significant strain×time (padj <= 0.05): ", n_dc_time_and_strain)
+message(sprintf("Percent that are genetic-background-specific: %.1f%%", pct_bg_specific))
+
+# ---- Prepare expression table (log2-CPM) -------
+# v2$E is voom log2-CPM matrix with genes as rows and samples as columns.
+expr_mat <- v2$E
+# Check gene names are rows
+if(is.null(rownames(expr_mat))){
+  stop("v2$E has no rownames (genes).")
+}
+
+# Make sample metadata: ensure it matches columns of expr_mat
+meta_plot <- filtered2_comp$new_meta  # use filtered2_comp metadata used for fit2
+# If your metadata has rownames as sample names, ensure they match colnames of expr_mat
+if(!all(colnames(expr_mat) %in% rownames(meta_plot))){
+  # try metadata assigned earlier named 'metadata' maybe:
+  if(all(colnames(expr_mat) %in% rownames(metadata))){
+    meta_plot <- metadata[colnames(expr_mat), ]
+  } else {
+    stop("Sample names in v2$E do not match rownames in metadata. Fix sample naming before plotting.")
+  }
+} else {
+  meta_plot <- meta_plot[colnames(expr_mat), ]
+}
+
+# Create plotting function that builds a tidy data.frame for selected genes
+make_tidy_for_genes <- function(gene_vector){
+  genes_present <- gene_vector[gene_vector %in% rownames(expr_mat)]
+  if(length(genes_present)==0) stop("No selected genes found in voom expression matrix.")
+  sub_expr <- expr_mat[genes_present, , drop=FALSE]
+  # transpose and melt
+  sub_df <- as.data.frame(t(sub_expr))
+  sub_df$Sample <- rownames(sub_df)
+  sub_df <- cbind(sub_df, meta_plot[rownames(sub_df), c("treatment","plant","time_point")])
+  long <- reshape2::melt(sub_df, id.vars = c("Sample","treatment","plant","time_point"),
+                         variable.name = "gene", value.name = "log2CPM")
+  # ensure factors
+  long$time_point <- factor(long$time_point, levels = c("t0","t3"))
+  long$treatment  <- factor(long$treatment)
+  long$plant      <- factor(long$plant)
+  return(long)
+}
+
+# Prepare tidy data
+tidy_time   <- make_tidy_for_genes(top_time_genes)
+tidy_strain <- make_tidy_for_genes(top_strain_genes)
+
+# Summarise per group: mean and sd (treatment x time_point); keep plant as facet or color if you prefer
+summarise_group <- function(tidy_df){
+  tidy_df %>%
+    group_by(gene, treatment, plant, time_point) %>%
+    summarise(mean = mean(log2CPM, na.rm=TRUE),
+              sd   = sd(log2CPM, na.rm=TRUE),
+              n    = n(), .groups = "drop") %>%
+    mutate(se = sd / sqrt(pmax(n,1)))
+}
+
+sum_time   <- summarise_group(tidy_time)
+sum_strain <- summarise_group(tidy_strain)
+
+# Plotting function: facet by gene, color by treatment (strain), shape by plant
+plot_gene_set <- function(summary_df, raw_df, title_str){
+  p <- ggplot(summary_df, aes(x = time_point, y = mean, group = treatment, color = treatment)) +
+    geom_line(aes(linetype = treatment), position = position_dodge(width=0.1)) +
+    geom_point(data = raw_df, aes(x = time_point, y = log2CPM, color = treatment, shape = plant),
+               alpha = 0.5, size = 1, position = position_jitter(width = 0.05, height = 0)) +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.12, position = position_dodge(width=0.1)) +
+    facet_wrap(~ gene, scales = "free_y", ncol = 5) +
+    theme_bw(base_size = 11) +
+    labs(title = title_str,
+         x = "Time point",
+         y = "log2-CPM (voom)",
+         color = "Strain",
+         shape = "Plant genotype") +
+    theme(strip.text = element_text(size=8),
+          axis.text.x = element_text(size=9))
+  return(p)
+}
+
+p_top_time   <- plot_gene_set(sum_time, tidy_time, "Top 10 genes: time-specific (T3 vs T0)")
+p_top_strain <- plot_gene_set(sum_strain, tidy_strain, "Top 10 genes: strain-specific time effect")
+
+# Save plots
+outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/plots"
+if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+
+pdf(file.path(outdir, "top10_time_specific_genes_voom_log2CPM.pdf"), width = 12, height = 8)
+print(p_top_time)
+dev.off()
+
+pdf(file.path(outdir, "top10_strain_time_interaction_genes_voom_log2CPM.pdf"), width = 12, height = 8)
+print(p_top_strain)
+dev.off()
+
+# Optional: combined figure (stacked)
+combined <- plot_grid(p_top_time + theme(legend.position = "bottom"),
+                      p_top_strain + theme(legend.position = "bottom"),
+                      ncol = 1, labels = c("A","B"), rel_heights = c(1,1))
+pdf(file.path(outdir, "top10_time_vs_strain_time_combined.pdf"), width = 12, height = 16)
+print(combined)
+dev.off()
+
+message("Plots written to: ", outdir)
+
+
+
+
 
 
 

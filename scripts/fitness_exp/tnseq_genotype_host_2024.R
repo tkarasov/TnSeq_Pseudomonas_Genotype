@@ -3,7 +3,7 @@ library(tidyverse)
 library(pheatmap)
 library(readr)
 library(pheatmap)
-# This script reads in the rds experiments for the four experiments Done by Effie in 12/2022 and 3/2023 with Rb-Tnseq and does basic deseq comparison trials
+# This script reads in the rds experiments for the four experiments Done by Effie in 12/2022 and 3/2023 with Rb-Tnseq and does basic deseq comparison trials. As of 12/2025 we have not been using this file and have instead been using limmaVoom_full_table_2025.R. 
 
 #setwd("~/Google\ Drive/My\ Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
 setwd("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/figures/2025_corrected")

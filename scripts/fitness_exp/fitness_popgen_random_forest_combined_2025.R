@@ -35,71 +35,8 @@ my_tufte_plot <- function(p) {
 setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
 
 ##########################################################################
-### Read in full counts table ###
-#all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_8_2025.rds")
-#all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
-all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/full_experiments/all_p25_dc_axenic_10_07_2025.csv")
-all_exp$Sample <- with(all_exp, paste(treatment, plant, time_point, position, experiment, sep = "_"))
-# Move Sample column to the front
-all_exp <- all_exp[, c("Sample", setdiff(names(all_exp), "Sample"))]
-all_exp$plant <- tolower(all_exp$plant)
 
-### Reassign control: when we originally did the experiment it turned out that pure culture at T0 was a more robust metric than the small amount of microbe on the plant at t0. So we need to split the pure culture controls in half and randomly assign as t0. THis should be done after removinga any actual plantxT0
-
-# Filter: remove rows where plant ≠ Ctrl/ctrl AND time_point == "t0"
-all_exp_filtered <- subset(all_exp, !(tolower(plant) != "ctrl" & time_point == "t0"))
-
-# now for the plant controls we want to randomly assign to either ey15_2 or col_0
-all_exp <- all_exp_filtered
-set.seed(823)  # for reproducibility
-ctrl_rows <- which(all_exp$plant == "ctrl")
-all_exp$plant[ctrl_rows] <- sample(c("col_0", "ey15_2"), length(ctrl_rows), replace = TRUE)
-
-
-### Subset metadata and count matrix
-metadata_cols <- colnames(all_exp)[c(1:11)]
-gene_cols <- colnames(all_exp)[13:dim(all_exp)[2]]
-
-# Create metadata and counts matrix
-metadata <- all_exp[,metadata_cols]
-rownames(metadata) <- metadata$Sample
-counts <- all_exp[,gene_cols]
-rownames(counts) <- all_exp$Sample
-
-#remove samples with few reads
-keep <- which(rowSums(counts, na.rm = TRUE)>=25000)
-counts <- counts[keep,]
-metadata_keep = metadata[keep,]
-metadata <- metadata_keep
-table(metadata[,c("experiment", "treatment", "time_point")])
-
-#remove experiments with dc3000
-remove_dc3000 <- which(metadata$treatment=="dc3000")
-p25_counts <- counts[-c(remove_dc3000),]
-p25_metadata <- metadata[-c(remove_dc3000),]
-
-#remove empty counts columns
-p25_counts<-p25_counts[, !(colSums(p25_counts, na.rm = TRUE) == 0 | is.na(colSums(p25_counts, na.rm = TRUE)))]
-
-# Now run the limmavoom model to get an estimate for the logFC for each of the genes over time 
-ey <- which(p25_metadata$plant=="ey15_2")
-p25_ey_metadata <- p25_metadata[ey,]
-p25_ey_counts <- t(p25_counts[ey,])
-lib_sizes <- colSums(p25_ey_counts)
-p25_ey_counts_clean <- p25_ey_counts[, lib_sizes > 0]
-design <- model.matrix(~ time_point, data = p25_ey_metadata)
-
-
-
-# 
-# v <- voom(dge, design, block = p25_ey_metadata$experiment)
-# 
-# fit <- lmFit(v, design, block = p25_ey_metadata$experiment, correlation = corfit$consensus)
-# fit <- eBayes(fit)
-# top_df <- topTable(fit, coef = "time_pointt3", number = Inf)
-# 
-
-###### THIS IS WHERE I GENERATE THE LOGFC DATA######### Actually I pulled in the lfc datatable from limmaVoom
+######### Actually I pulled in the lfc datatable from limmaVoom
 lfc_df <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFCDC3000logFCp25c2_10_2025.csv")
 
 #this is the output from running the python evolutionary genetics scripts on the panX output
@@ -110,11 +47,6 @@ blast_div <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotyp
 blast_div <- blast_div[,c("V1", "V2", "V11")]
 colnames(blast_div) <- c("DAK","WP", "perc_div_aa")
 rownames(blast_div) <- blast_div$WP
-
-#this is data file for the output from the tnseq experiment for p25.c2 in the tailocin plus also some of the plant genotype info
-#eyach_tailocin <- read.table("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/tailocin/tailocin_plant_fitness_selection_717_2024.csv", header = TRUE)
-
-#dc3000_eyach <- read.table("~/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/in_planta_rbtnseq_p25c2_dc3000/in_planta_may23/dc3000_may23/dc3000_sample_info_may23.txt", header = TRUE)
 
 #I need to rename the gene names in conservation file
 orthologs <- read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", 
@@ -290,25 +222,117 @@ vars <- c("logFC_P25C2", "logFC_DC3000", "perc_div_aa",
 #   mutate(div_x_dc3000 = perc_div_aa * logFC_DC3000) %>%
 #   na.omit()
 fit_exp$scaled_div <- scale(fit_exp$perc_div_aa)
-fit_exp$scaled_logFC <- scale(fit_exp$logFC_DC3000)
+fit_exp$scaled_logFC <- scale(fit_exp$logFC_DC3000_col0)
 fit_exp$interaction <- fit_exp$scaled_div * fit_exp$scaled_logFC
 fit_exp_clean <- fit_exp %>% 
   na.omit()
 
 #first let's graph against all the variables of interest
-# Define variables
-predictor_vars <- c("perc_div_aa", "Num_gene_events", "Genetic_Diversity", "Col.0_Pto", "KB_Pto",
-                    "interaction", "logFC_P25C2", "Time.in.tree")
+# Full code: faceted predictor plots with R / p labels in upper-right corner
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
 
-# Reshape to long format
+# Clean, fixed, end-to-end plotting block
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+
+# --- Ensure required columns exist; create numeric interaction if missing ---
+if (!"interaction" %in% names(fit_exp_clean)) {
+  if (all(c("logFC_P25c2_col0", "perc_div_aa") %in% names(fit_exp_clean))) {
+    fit_exp_clean <- fit_exp_clean %>%
+      mutate(interaction = logFC_P25c2_col0 * perc_div_aa)
+  } else {
+    stop("Neither 'interaction' column exists nor the necessary columns to create it (logFC_P25c2_col0, perc_div_aa) are present.")
+  }
+}
+
+# --- Define predictor variables (as you provided) ---
+predictor_vars <- c("perc_div_aa", "Num_gene_events", "Genetic_Diversity",
+                    "Col.0_Pto", "KB_Pto", "interaction",
+                    "logFC_P25c2_col0", "Time.in.tree")
+
+# --- Prepare long-format plotting data (drop rows lacking the selected columns) ---
+needed_cols <- unique(c("logFC_DC3000_col0", predictor_vars))
+missing_cols <- setdiff(needed_cols, names(fit_exp_clean))
+if (length(missing_cols) > 0) {
+  stop("Missing required columns in fit_exp_clean: ", paste(missing_cols, collapse = ", "))
+}
+
 plot_data <- fit_exp_clean %>%
-  dplyr::select(logFC_DC3000, all_of(predictor_vars)) %>%
-  pivot_longer(cols = -logFC_DC3000, names_to = "Variable", values_to = "Value")
+  dplyr::select(all_of(needed_cols)) %>%
+  # keep rows that have at least the response present (we'll let cor.test handle cases per variable)
+  filter(!is.na(logFC_DC3000_col0)) %>%
+  pivot_longer(cols = -logFC_DC3000_col0,
+               names_to = "Variable",
+               values_to = "Value")
 
-ggplot(plot_data, aes(x = Value, y = logFC_DC3000)) +
+# --- Compute per-Variable Pearson correlation tests safely ---
+labels_df <- plot_data %>%
+  group_by(Variable) %>%
+  summarize(
+    n_obs = sum(!is.na(Value) & !is.na(logFC_DC3000_col0)),
+    cor_test = list(if (n_obs >= 3) {
+      tryCatch(cor.test(Value, logFC_DC3000_col0, use = "complete.obs"),
+               error = function(e) NULL)
+    } else NULL),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    R = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)),
+    p = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),
+    label = map2_chr(R, p, ~ {
+      if (is.na(.x)) {
+        "insufficient\npoints"
+      } else {
+        paste0("R = ", formatC(.x, digits = 2, format = "f"), "\n", "p = ", signif(.y, 2))
+      }
+    })
+  )
+
+# --- Robust upper-right label positions per facet (5% inset) ---
+pos_df <- plot_data %>%
+  group_by(Variable) %>%
+  summarize(
+    x_max = if (all(is.na(Value))) NA_real_ else max(Value, na.rm = TRUE),
+    x_min = if (all(is.na(Value))) NA_real_ else min(Value, na.rm = TRUE),
+    y_max = if (all(is.na(logFC_DC3000_col0))) NA_real_ else max(logFC_DC3000_col0, na.rm = TRUE),
+    y_min = if (all(is.na(logFC_DC3000_col0))) NA_real_ else min(logFC_DC3000_col0, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    x_span = x_max - x_min,
+    y_span = y_max - y_min,
+    # if span is zero/NA, fall back to a small absolute offset so the label can be placed
+    x_span = ifelse(is.na(x_span) | x_span == 0,
+                    ifelse(is.na(x_max), NA_real_, max(abs(x_max), 1) * 0.01 + 1e-6),
+                    x_span),
+    y_span = ifelse(is.na(y_span) | y_span == 0,
+                    ifelse(is.na(y_max), NA_real_, max(abs(y_max), 1) * 0.01 + 1e-6),
+                    y_span),
+    inset_frac = 0.05,  # 5% inset from the top-right corner
+    x_pos = ifelse(is.na(x_max), NA_real_, x_max - inset_frac * x_span),
+    y_pos = ifelse(is.na(y_max), NA_real_, y_max - inset_frac * y_span)
+  ) %>%
+  select(Variable, x_pos, y_pos)
+
+# --- Join label text with positions ---
+labels_df <- labels_df %>% left_join(pos_df, by = "Variable")
+
+# --- Build and display the faceted plot ---
+p <- ggplot(plot_data, aes(x = Value, y = logFC_DC3000_col0)) +
   geom_point(size = 1.2, alpha = 0.8) +
   geom_smooth(method = "lm", se = FALSE, linewidth = 0.4, linetype = "dashed", color = "black") +
   facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
+  geom_text(
+    data = labels_df,
+    aes(x = x_pos, y = y_pos, label = label),
+    hjust = 1, vjust = 1, size = 3.1,
+    na.rm = TRUE
+  ) +
   labs(
     x = NULL,
     y = expression(log[2] * "FC in DC3000"),
@@ -323,222 +347,27 @@ ggplot(plot_data, aes(x = Value, y = logFC_DC3000)) +
     axis.ticks = element_line(linewidth = 0.3)
   )
 
+print(p)
+
+
+# outdir <- "path/to/outdir"
+# if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+# ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot = p, width = 9, height = 8)
 
 
 
 
 
-# Step 2: Define response and predictor matrix
-Y <- fit_exp_clean$logFC_P25C2
-X <- model.matrix(~ logFC_DC3000 + 
-                    perc_div_aa +
-                    Genetic_Diversity +
-                    Col.0_Pto + 
-                    KB_Pto +
-                    interaction +
-                    Time.in.tree, data = fit_exp_clean[, -1])[, -1]  # Remove intercept
-
-# Step 3: Fit elastic net model with cross-validation
-set.seed(123)
-fit <- cv.glmnet(X, Y, alpha = 0.5)
-
-# Step 4: View coefficients at optimal lambda
-coef(fit, s = "lambda.min")
-
-# Step 5 (optional): Calculate R²
-y_pred <- predict(fit, newx = X, s = "lambda.min")
-rsq <- 1 - sum((Y - y_pred)^2) / sum((Y - mean(Y))^2)
-cat("R² =", round(rsq, 3), "\n")
 
 
-# Predict values at lambda.min
-
-# Build data frame for plotting
-  library(grid)  # for unit()
-  
-  # Predict values at lambda.min
-  y_pred <- as.numeric(predict(fit, newx = X, s = "lambda.min"))
-  
-  # Build data frame for plotting
-  plot_df <- data.frame(
-    Observed = Y,
-    Predicted = y_pred
-  )
-  
-  # Compute R²
-  r2 <- round(cor(plot_df$Observed, plot_df$Predicted)^2, 2)
-  
-  # Plot
-  ggplot(plot_df, aes(x = Observed, y = Predicted)) +
-    geom_point(size = 1.5, alpha = 0.8) +
-    geom_smooth(method = "lm", se = FALSE, linewidth = 0.5, color = "black", linetype = "dashed") +
-    annotate("text", x = min(plot_df$Observed), y = max(plot_df$Predicted),
-             label = paste0("R² = ", r2), hjust = 0, vjust = 1.5, size = 3.5) +
-    theme_minimal(base_size = 10) +
-    labs(
-      x = expression("Observed " * log[2] * "FC"),
-      y = expression("Predicted " * log[2] * "FC")
-    ) +
-    theme(
-      panel.grid = element_blank(),
-      axis.line = element_line(linewidth = 0.4),
-      axis.ticks = element_line(linewidth = 0.3),
-      plot.margin = unit(c(5, 5, 5, 5), "mm"),
-      aspect.ratio = 1
-    )
 
 
-# Those analyses are fine. 
-  # Linear model with interaction term
-  model_interact <- lm(logFC_P25c2_col0 ~ logFC_DC3000_col0 * perc_div_aa, data = fit_con)
-  model_no_interact <- lm(logFC_P25c2_col0 ~ logFC_DC3000_col0 , data = fit_con)
-  # Get adjusted R²
-  no_adj_r2 <- summary(model_no_interact)$adj.r.squared
-  adj_r2 <- summary(model_interact)$adj.r.squared
-  
-  # Report
-  cat(sprintf("Adjusted R² with interaction = %.1f%%\n", adj_r2 * 100))
-  
-  
-  
-  
-  
 
-# https://www.guru99.com/r-random-forest-tutorial.html
-# Define the control
-# library(caret)
-# 
-# # Assume fit_exp is your dataframe
-# # Columns: log2FC, KB_Pto, Col.o_Pto, variance, Time.in.tree, Genetic_Diversity, Num_gene_events
-# 
-# # Remove rows with missing values (RF can handle NAs with some packages, but safest to clean)
-# fit_exp_clean <- na.omit(fit_exp)
-# fit_exp_clean$interaction <- interaction(fit_exp_clean$logFC_P25C2, fit_exp_clean$perc_div_aa)
-# model_formula <- logFC_DC3000 ~logFC_P25C2 + perc_div_aa + interaction + KB_Pto + Col.0_Pto +  Time.in.tree + Genetic_Diversity + Num_gene_events
-# 
-# set.seed(123)  # for reproducibility
-# 
-# ctrl <- trainControl(method = "cv", number = 5)  # 5-fold CV
-# 
-# tuneGrid <- expand.grid(.mtry = c(2, 3, 4))  # Tune mtry between 2 and 4
-# 
-# rf_model <- train(
-#   model_formula,
-#   data = fit_exp_clean,
-#   method = "rf",
-#   trControl = ctrl,
-#   tuneGrid = tuneGrid,
-#   importance = TRUE
-# )
-# 
-# 
-# print(rf_model)
-# varImp(rf_model)
-# plot(varImp(rf_model), top = 10)
-# 
-# 
-# 
-# predicted <- predict(rf_model, newdata = fit_exp_clean)
-# plot_df <- data.frame(
-#     Observed = fit_exp_clean$logFC_DC3000,
-#   Predicted = predicted
-# )
-# r2 <- cor(plot_df$Observed, plot_df$Predicted)^2
-# observed_predict_plot <- ggplot(plot_df, aes(x = Observed, y = Predicted)) +
-#   geom_point(alpha = 0.6) +
-#   geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
-#   annotate("text", x = min(plot_df$Observed), y = max(plot_df$Predicted),
-#            label = paste0("R² = ", round(r2, 3)), hjust = 0, vjust = 1, size = 5) +
-#   labs(
-#     title = "Observed vs Predicted log2FC",
-#     x = "Observed log2FC",
-#     y = "Predicted log2FC"
-#   ) +
-#   theme_minimal(base_size = 14)
-# 
-# 
-# # Holy shit. Why is it so good at predicting the positive fold change? Why is there nothing in the wrong place?
-# #Let's look at some specific datapoints. Why does the positive get predicted positive? And the really negative really neative. why does the KB Pto bump around so much? This doesn't make sense to me. OK apparently I was looking at apparent performance rather than CV performance
-# 
-# #this is the CV performance
-# # Use all cv_preds (since mtry is constant). Actually no. I want to filter the cv_preds to those with a |log2FC|>1
-# cv_preds_best <- cv_preds  %>% filter(abs(obs)>1)
-# 
-# # Compute CV R²
-# r2_cv <- cor(cv_preds_best$obs, cv_preds_best$pred)^2
-# 
-# # Plot
-# cv_plot <- ggplot(cv_preds_best, aes(x = obs, y = pred)) +
-#   geom_point(alpha = 0.6, color = "grey50") +
-#   geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
-#   annotate("text", 
-#            x = min(cv_preds_best$obs, na.rm = TRUE), 
-#            y = max(cv_preds_best$pred, na.rm = TRUE),
-#            label = paste0("CV R² = ", round(r2_cv, 3)), 
-#            hjust = 0, vjust = 1, size = 5) +
-#   labs(
-#     title = "Observed vs CV Predicted log2FC",
-#     x = "Observed log2FC",
-#     y = "Predicted log2FC"
-#   ) +
-#   theme_minimal(base_size = 14)
-# 
-# print(cv_plot)
-# ggsave("observed_predict_plot.pdf", cv_plot, width = 10, height = 8)
-# 
-# ## can I compare predictive capacity for different ranges?
-# # Example: Define bins
-# cv_preds_best <- cv_preds_best %>%
-#   mutate(log2FC_bin = cut(obs, 
-#                           breaks = c(-Inf, -1.5, 0, 1.5, Inf), 
-#                           labels = c("Low", "Medium-Neg", "Medium-Pos", "High")))
-# 
-# # Compute R² in each bin
-# bin_r2 <- cv_preds_best %>%
-#   group_by(log2FC_bin) %>%
-#   summarise(
-#     n = n(),
-#     R2 = cor(obs, pred)^2
-#   )
-# 
-# print(bin_r2)
-# #now print observed vs predicted:
-# ggplot(cv_preds_best, aes(x = obs, y = pred)) +
-#   geom_point(alpha = 0.5) +
-#   geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
-#   facet_wrap(~ log2FC_bin) +
-#   labs(title = "Observed vs CV Predicted by log2FC bin",
-#        x = "Observed log2FC", y = "Predicted log2FC") +
-#   theme_minimal()
-# 
-# 
-# #######
-# # Define predictors
-# predictors <- c("KB_Pto", "Col.0_Pto",  "Time.in.tree", "Genetic_Diversity", "Num_gene_events")
-# 
-# # Create plots
-# plot_list <- lapply(predictors, function(var) {
-#   
-#   # Compute R2
-#   model <- lm(as.formula(paste("log2FC ~", var)), data = fit_exp_clean)
-#   r2_val <- summary(model)$r.squared
-#   
-#   ggplot(fit_exp_clean, aes_string(x = var, y = "log2FC")) +
-#     geom_point(alpha = 0.3, color = "grey50") +  # dull points
-#     geom_smooth(method = "lm", se = TRUE, color = "red", fill = "red", alpha = 0.2) +  # trend line with SE
-#     annotate("text", x = Inf, y = -Inf, hjust = 1.1, vjust = -0.5, 
-#              label = paste0("R² = ", round(r2_val, 3)), size = 4) +
-#     labs(
-#       title = var,
-#       x = var,
-#       y = "log2FC"
-#     ) +
-#     theme_minimal(base_size = 12)
-# })
-# 
-# # Combine into grid
-# combined_plot <- wrap_plots(plot_list, ncol = 2)
-# 
-# # Display
-# print(combined_plot)
-# ggsave("log2FC_predictor_scatterplots_withR2_SE.pdf", combined_plot, width = 10, height = 8)
+
+
+
+
+
+
+
+
