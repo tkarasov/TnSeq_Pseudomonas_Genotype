@@ -280,8 +280,7 @@ labels_df <- plot_data %>%
                error = function(e) NULL)
     } else NULL),
     .groups = "drop"
-  ) %>%
-  mutate(
+  ) %>% mutate(
     R = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)),
     p = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),
     label = map2_chr(R, p, ~ {
@@ -350,24 +349,384 @@ p <- ggplot(plot_data, aes(x = Value, y = logFC_DC3000_col0)) +
 print(p)
 
 
-# outdir <- "path/to/outdir"
-# if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-# ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot = p, width = 9, height = 8)
+outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/plots"
+if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot = p, width = 9, height = 8)
+
+
+##################
+# This next part takes the genes in DC3000 that are found to be important over time (are signficant), and asks about predictors for those ones.
+
+
+lfc_dcsig <- lfc_df %>% dplyr::filter(Significant=="Yes")
+
+
+# 2) Subset fit_exp to genes that are DC3000-significant.
+#    In your merges, gene identifier in fit_exp is in column "WP.x" (from earlier merge).
+sig_fit <- fit_exp %>%
+  filter(!is.na(WP.x) & WP.x %in% lfc_dcsig$gene) %>% 
+  # keep only rows with at least one response present
+  filter(!is.na(logFC_DC3000_col0) | !is.na(logFC_P25c2_col0))
+
+cat("Number of DC3000-significant genes found in fit_exp:", nrow(sig_fit), "\n")
+
+# Quick table of missingness
+sapply(sig_fit[,c("logFC_DC3000_col0","logFC_P25c2_col0","perc_div_aa",
+                  "Num_gene_events","Genetic_Diversity","Col.0_Pto","KB_Pto","Time.in.tree","interaction")],
+       function(x) sum(is.na(x)))
+
+# -------------------------
+# A. Linear model (within DC3000-significant genes)
+#    Predicting p25.c2 effect from your candidate predictors
+# -------------------------
+lm_p25 <- lm(data = sig_fit, logFC_P25c2_col0 ~
+               perc_div_aa + Num_gene_events + Genetic_Diversity +
+               Col.0_Pto + KB_Pto + Time.in.tree + interaction + logFC_DC3000_col0)
+summary(lm_p25)
+anova_p25 <- car::Anova(lm_p25, type = 3)
+print(anova_p25)
+
+
+#############################################
+# FACET PLOT OF ALL PREDICTORS vs RESPONSE for the SNPs that are significant in DC3000
+# (fixed: no ambiguous unname() call; robust to all-NA groups)
+#############################################
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+
+### Choose dataset:
+# df_to_plot <- fit_exp_clean        # full dataset
+df_to_plot <- sig_fit               # DC3000-significant genes
+
+### Choose response variable ("logFC_DC3000_col0" or "logFC_P25c2_col0")
+response <- "logFC_DC3000_col0"
+
+predictors <- c(
+  "perc_div_aa",
+  "Num_gene_events",
+  "Genetic_Diversity",
+  "Col.0_Pto",
+  "KB_Pto",
+  "Time.in.tree",
+  "interaction",
+  "logFC_P25c2_col0"
+)
+
+# Keep only available predictors
+predictors <- predictors[predictors %in% names(df_to_plot)]
+
+# Build long-format data for plotting
+plot_df <- df_to_plot %>%
+  dplyr::select(all_of(c(response, predictors))) %>%
+  filter(!is.na(.data[[response]])) %>%
+  pivot_longer(cols = all_of(predictors),
+               names_to = "Variable",
+               values_to = "Value")
+
+# Compute per-variable Pearson correlations (robust)
+corr_labels <- plot_df %>%
+  group_by(Variable) %>%
+  summarize(
+    n = sum(!is.na(Value) & !is.na(.data[[response]])),
+    ct = list(if (n >= 3) {
+      tryCatch(cor.test(Value, .data[[response]], use = "complete.obs"),
+               error = function(e) NULL)
+    } else NULL),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    R = map_dbl(ct, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)),
+    p = map_dbl(ct, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),
+    label = map2_chr(R, p, ~ if (is.na(.x)) "n<3" else paste0("R = ", formatC(.x, 2, format = "f"), "\np = ", signif(.y, 2)))
+  )
+
+# Position labels in upper-right of each facet (robust to all-NA)
+positions <- plot_df %>%
+  group_by(Variable) %>%
+  summarize(
+    x = if (all(is.na(Value))) NA_real_ else max(Value, na.rm = TRUE),
+    y = if (all(is.na(.data[[response]]))) NA_real_ else max(.data[[response]], na.rm = TRUE),
+    .groups = "drop"
+  )
+
+corr_labels <- left_join(corr_labels, positions, by = "Variable")
+
+# If position is NA (all NA), set a fallback (so geom_text doesn't error)
+corr_labels <- corr_labels %>%
+  mutate(
+    x = ifelse(is.na(x), 0, x),
+    y = ifelse(is.na(y), 0, y)
+  )
+
+# ---- Final Faceted Plot ----
+p_all <- ggplot(plot_df, aes(Value, .data[[response]])) +
+  geom_point(alpha = 0.75, size = 1) +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.4) +
+  facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
+  geom_text(data = corr_labels,
+            aes(x = x, y = y, label = label),
+            hjust = 1.05, vjust = 1.1, size = 3.1, na.rm = TRUE) +
+  labs(
+    x = NULL,
+    y = response,
+    title = paste("Predictors vs", response)
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold"),
+    axis.line = element_line(color = "black", linewidth = 0.3)
+  )
+
+print(p_all)
+
+# Save to file
+ggsave("ALL_predictors_vs_response_facet_plot_fixed.pdf",
+       plot = p_all, width = 9, height = 8)
+
+
+#Function that returns a sentence describing variance explained
+
+variance_sentence <- function(model, response_name, predictor_name) {
+  r2 <- summary(model)$r.squared
+  pct <- round(100 * r2, 2)
+  
+  sentence <- paste0(
+    "Variation in ", predictor_name, 
+    " explains ", pct, "% of the variance in ", response_name, "."
+  )
+  
+  return(sentence)
+}
+
+
+############################################################
+# 1. Variance explained in P25.c2 by DC3000
+############################################################
+
+model_p25_by_dc <- lm(logFC_P25c2_col0 ~ logFC_DC3000_col0, data = fit_exp_clean)
+
+sentence_p25 <- variance_sentence(
+  model_p25_by_dc,
+  response_name = "logFC_P25c2",
+  predictor_name = "logFC_DC3000"
+)
+
+cat(sentence_p25, "\n\n")
+
+############################################################
+# 2. Variance explained between Col-0 and Ey15 in DC3000
+############################################################
+# Update column names here if different:
+col0_col <- "logFC_DC3000_col0"
+ey15_col <- "logFC_DC3000_ey15"
+
+model_ey15_by_col0 <- lm(fit_exp_clean[[ey15_col]] ~ fit_exp_clean[[col0_col]])
+model_col0_by_ey15 <- lm(fit_exp_clean[[col0_col]] ~ fit_exp_clean[[ey15_col]])
+
+sentence_ey15 <- variance_sentence(
+  model_ey15_by_col0,
+  response_name = "logFC_DC3000_Ey15",
+  predictor_name = "logFC_DC3000_Col0"
+)
+
+sentence_col0 <- variance_sentence(
+  model_col0_by_ey15,
+  response_name = "logFC_DC3000_Col0",
+  predictor_name = "logFC_DC3000_Ey15"
+)
+
+cat(sentence_ey15, "\n")
+cat(sentence_col0, "\n")
 
 
 
+############################################################
+# 3. Make a graph of how the local Pearson changes with the FC of DC3000
+############################################################
 
+# Moderately-smoothed local curves WITH 95% CI ribbons (LOESS se-based)
+# Requires: dplyr, ggplot2
+# Paste into R and run (uses sig_fit if present else fit_exp_clean else fit_exp)
 
+library(dplyr)
+library(ggplot2)
 
+# ---- USER TUNABLES ----
+window_width <- 1.2   # sliding window half-width (moderate smoothing)
+loess_span   <- 0.4   # LOESS smoothing span (moderate)
+min_points    <- 10   # minimum points in a window to compute local stats
+n_grid        <- 250  # resolution for evaluation along DC3000 axis
+z_alpha       <- 1.96 # 95% CI ~ 1.96 * se
+# ------------------------
 
+# --- select dataset (prefers sig_fit) ---
+if (exists("sig_fit")) {
+  df <- sig_fit
+} else if (exists("fit_exp_clean")) {
+  df <- fit_exp_clean
+} else if (exists("fit_exp")) {
+  df <- fit_exp
+} else stop("No dataset found: define 'sig_fit' or 'fit_exp_clean' or 'fit_exp'")
 
+# required columns
+req <- c("logFC_DC3000_col0", "logFC_P25c2_col0")
+miss <- setdiff(req, names(df))
+if (length(miss) > 0) stop("Missing required columns: ", paste(miss, collapse = ", "))
 
+# prepare data (drop NA)
+df2 <- df %>% dplyr::select(all_of(req)) %>% na.omit()
 
+if (nrow(df2) < 30) warning("Fewer than 30 complete points — interpret results with caution.")
 
+# define DC3000 grid
+dc_vals <- seq(min(df2$logFC_DC3000_col0, na.rm = TRUE),
+               max(df2$logFC_DC3000_col0, na.rm = TRUE),
+               length.out = n_grid)
 
+# storage
+local_R2    <- rep(NA_real_, n_grid)
+local_slope <- rep(NA_real_, n_grid)
+local_r     <- rep(NA_real_, n_grid)
+local_n     <- rep(0L, n_grid)
 
+# compute local stats using sliding window
+for (i in seq_along(dc_vals)) {
+  x0 <- dc_vals[i]
+  window <- df2 %>% filter(abs(logFC_DC3000_col0 - x0) <= window_width)
+  local_n[i] <- nrow(window)
+  if (nrow(window) >= min_points) {
+    m <- lm(logFC_P25c2_col0 ~ logFC_DC3000_col0, data = window)
+    local_R2[i]    <- summary(m)$r.squared
+    local_slope[i] <- coef(m)[2]
+    local_r[i]     <- suppressWarnings(cor(window$logFC_DC3000_col0, window$logFC_P25c2_col0))
+  } else {
+    local_R2[i] <- NA_real_
+    local_slope[i] <- NA_real_
+    local_r[i] <- NA_real_
+  }
+}
 
+local_df <- data.frame(
+  DC3000 = dc_vals,
+  n_points = local_n,
+  local_R2 = local_R2,
+  local_slope = local_slope,
+  local_r = local_r
+)
 
+# Identify valid rows per metric
+ok_R2 <- which(!is.na(local_df$local_R2))
+ok_slope <- which(!is.na(local_df$local_slope))
+ok_r <- which(!is.na(local_df$local_r))
 
+# ---- Fit LOESS with se=TRUE and compute 95% CI for each metric ----
+safe_loess_predict <- function(x, y, newx, span) {
+  # returns a list with fit, se.fit (vector of length newx)
+  if (length(x) < 10 || all(is.na(y))) {
+    return(list(fit = rep(NA_real_, length(newx)), se = rep(NA_real_, length(newx))))
+  }
+  lo <- tryCatch(loess(y ~ x, span = span, control = loess.control(surface = "interpolate")),
+                 error = function(e) NULL)
+  if (is.null(lo)) {
+    return(list(fit = rep(NA_real_, length(newx)), se = rep(NA_real_, length(newx))))
+  }
+  pr <- tryCatch(predict(lo, newdata = data.frame(x = newx), se = TRUE),
+                 error = function(e) NULL)
+  if (is.null(pr)) {
+    return(list(fit = rep(NA_real_, length(newx)), se = rep(NA_real_, length(newx))))
+  }
+  # predict.loess with se=TRUE returns a list with fit and se.fit; handle both possibilities
+  fit <- as.numeric(pr$fit)
+  se  <- as.numeric(pr$se.fit %||% pr$se) # fallbacks
+  list(fit = fit, se = se)
+}
 
+# LOESS for R2
+if (length(ok_R2) >= 5) {
+  res_R2 <- safe_loess_predict(local_df$DC3000[ok_R2], local_df$local_R2[ok_R2], local_df$DC3000, loess_span)
+  local_df$R2_fit <- res_R2$fit
+  local_df$R2_se <- res_R2$se
+  local_df$R2_lo <- local_df$R2_fit - z_alpha * local_df$R2_se
+  local_df$R2_hi <- local_df$R2_fit + z_alpha * local_df$R2_se
+} else {
+  local_df$R2_fit <- NA; local_df$R2_se <- NA; local_df$R2_lo <- NA; local_df$R2_hi <- NA
+}
+
+# LOESS for slope
+if (length(ok_slope) >= 5) {
+  res_slope <- safe_loess_predict(local_df$DC3000[ok_slope], local_df$local_slope[ok_slope], local_df$DC3000, loess_span)
+  local_df$slope_fit <- res_slope$fit
+  local_df$slope_se <- res_slope$se
+  local_df$slope_lo <- local_df$slope_fit - z_alpha * local_df$slope_se
+  local_df$slope_hi <- local_df$slope_fit + z_alpha * local_df$slope_se
+} else {
+  local_df$slope_fit <- NA; local_df$slope_se <- NA; local_df$slope_lo <- NA; local_df$slope_hi <- NA
+}
+
+# LOESS for r
+if (length(ok_r) >= 5) {
+  res_r <- safe_loess_predict(local_df$DC3000[ok_r], local_df$local_r[ok_r], local_df$DC3000, loess_span)
+  local_df$r_fit <- res_r$fit
+  local_df$r_se <- res_r$se
+  local_df$r_lo <- local_df$r_fit - z_alpha * local_df$r_se
+  local_df$r_hi <- local_df$r_fit + z_alpha * local_df$r_se
+} else {
+  local_df$r_fit <- NA; local_df$r_se <- NA; local_df$r_lo <- NA; local_df$r_hi <- NA
+}
+
+# clamp R2 CI to sensible range [0,1]
+local_df$R2_lo <- pmax(0, local_df$R2_lo)
+local_df$R2_hi <- pmin(1, local_df$R2_hi)
+
+# ---- PLOT 1: Local R^2 with CI ribbon ----
+p_r2 <- ggplot(local_df, aes(x = DC3000)) +
+  geom_line(aes(y = local_R2), color = "grey80", size = 0.5, alpha = 0.6) +
+  geom_ribbon(aes(ymin = R2_lo, ymax = R2_hi), fill = "steelblue", alpha = 0.18, inherit.aes = TRUE) +
+  geom_line(aes(y = R2_fit), color = "steelblue", size = 1.05) +
+  geom_point(data = local_df %>% filter(n_points < min_points), aes(x = DC3000, y = 0), shape = 4, color = "grey50", size = 1.2, alpha = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Local R²: DC3000 → P25.c2 (moderately smoothed, 95% CI)",
+       subtitle = paste0("window_width = ", window_width, ", LOESS span = ", loess_span, ", min_points = ", min_points),
+       x = expression(log[2]*"FC in DC3000"),
+       y = expression("Local R"^2)) +
+  theme_minimal(base_size = 13)
+
+ggsave("local_R2_moderately_smoothed_CI.pdf", p_r2, width = 7, height = 4.5)
+print(p_r2)
+
+# ---- PLOT 2: Local slope with CI ribbon ----
+p_slope <- ggplot(local_df, aes(x = DC3000)) +
+  geom_line(aes(y = local_slope), color = "grey80", size = 0.5, alpha = 0.6) +
+  geom_ribbon(aes(ymin = slope_lo, ymax = slope_hi), fill = "firebrick3", alpha = 0.18) +
+  geom_line(aes(y = slope_fit), color = "firebrick3", size = 1.05) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Local slope of P25.c2 ~ DC3000 (moderately smoothed, 95% CI)",
+       subtitle = paste0("window_width = ", window_width, ", LOESS span = ", loess_span),
+       x = expression(log[2]*"FC in DC3000"),
+       y = "Local slope") +
+  theme_minimal(base_size = 13)
+
+ggsave("local_slope_moderately_smoothed_CI.pdf", p_slope, width = 7, height = 4.5)
+print(p_slope)
+
+# ---- PLOT 3: Local Pearson r with CI ribbon ----
+p_r <- ggplot(local_df, aes(x = DC3000)) +
+  geom_line(aes(y = local_r), color = "grey80", size = 0.5, alpha = 0.6) +
+  geom_ribbon(aes(ymin = r_lo, ymax = r_hi), fill = "darkgreen", alpha = 0.18) +
+  geom_line(aes(y = r_fit), color = "darkgreen", size = 1.05) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Local Pearson r: DC3000 vs P25.c2 (moderately smoothed, 95% CI)",
+       subtitle = paste0("window_width = ", window_width, ", LOESS span = ", loess_span),
+       x = expression(log[2]*"FC in DC3000"),
+       y = "Local Pearson r") +
+  theme_minimal(base_size = 13)
+
+ggsave("local_correlation_moderately_smoothed_CI.pdf", p_r, width = 7, height = 4.5)
+print(p_r)
+
+cat("Saved:\n - local_R2_moderately_smoothed_CI.pdf\n - local_slope_moderately_smoothed_CI.pdf\n - local_correlation_moderately_smoothed_CI.pdf\n")
 
