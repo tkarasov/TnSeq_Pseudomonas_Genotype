@@ -103,6 +103,7 @@ setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive
 
 ##########################################################################
 ### Read in full counts table ###
+##########################################################################
 # all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_5_2025.rds")
 #all_exp <- readRDS("../full_experiments/all_p25_dc_axenic_8_2025.rds")
 all_exp <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/full_experiments/all_p25_dc_axenic_10_07_2025.csv")
@@ -184,10 +185,8 @@ counts_filtered <- filtered2$new_counts[keep_genes, ]
 filtered2_comp <- filtered2
 filtered2_comp$new_counts <- counts_filtered
 
-# OK now let's do 
+# OK now let's do the regression modeling
 design2 <- model.matrix(~ treatment * time_point * plant, data = filtered2$new_meta)
-#dge2 <- DGEList(counts = filtered2$new_counts)
-#keep <- filterByExpr(dge2, design2)
 dge2_filtered <-  DGEList(counts = filtered2_comp$new_counts)
 dge2 <- calcNormFactors(dge2_filtered, method = "TMM")
 
@@ -196,7 +195,7 @@ fit2 <- lmFit(v2, design2)
 fit2 <- eBayes(fit2)
 
 #################
-# OK I am going crazy with issue with the 
+# OK I was going crazy before with an issue. 
 # 1 Get the fold change values for specific coefficients in the model. 11/2025
 tt_dc3000_time <- topTable(fit2,coef = "time_pointt3",number = Inf,sort.by = "none")
 tt_strain_time_col0 <- topTable(fit2, coef="treatmentp25c2:time_pointt3",number = Inf,sort.by = "none")
@@ -371,15 +370,6 @@ dev.off()
 message("Plots written to: ", outdir)
 
 
-
-
-
-
-
-
-
-
-
 # Plot logFC p25.c2 time vs DC3000 time
 df_time <- data.frame(
   gene = rownames(fit2$coefficients),
@@ -480,7 +470,7 @@ frac_df <- tibble(
     values_to = "Fraction"
   ) %>%
   mutate(
-    EffectPresence = recode(
+    EffectPresence = dplyr::recode(
       EffectPresence,
       With    = "Has effect",
       Without = "No effect"
@@ -535,7 +525,7 @@ df_long <- df_time %>%
   pivot_longer(cols = starts_with("logFC_"),
                names_to = "group",
                values_to = "log2FC") %>%
-  mutate(group = recode(group,
+  mutate(group = dplyr::recode(group,
                         logFC_DC3000 = "DC3000",
                         logFC_P25c2  = "P25.c2")) %>%
   filter(!is.na(log2FC))
@@ -718,18 +708,4 @@ print(combined)
 dev.off()
 
 message("Plots written to: ", outdir)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

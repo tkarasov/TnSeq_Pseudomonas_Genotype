@@ -171,9 +171,6 @@ p22_limit <- p25_22_relabel[,c(10:dim(p25_22_relabel)[2])]
 p23_limit <- p25_23_relabel[,c(8:dim(p25_23_relabel)[2])]
 p25_22_new<- t(rowsum(t(p22_limit), group = colnames(p22_limit), na.rm = T))
 p25_23_new<- t(rowsum(t(p23_limit), group = colnames(p23_limit), na.rm = T))
-
-
-
 p25_22_new2<- cbind(p25_22_relabel[,c(1:9)],p25_22_new )
 p25_23_new2<- cbind(p25_23_relabel[,c(1:7)],p25_23_new )
 
