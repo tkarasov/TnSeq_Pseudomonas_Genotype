@@ -6,7 +6,14 @@
 # Usage:
 #   ./parse_one2one_flexible.sh <Orthogroups.tsv> <protA.faa> <protB.faa>
 # Example:
-#   ./parse_one2one_flexible.sh /path/to/Orthogroups.tsv DC3000_protein_12_2025.faa plate25.C2.annotation.faa
+
+# ./parse_one2one_flexible.sh \
+  /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/orthofinder_pair_20251210_165321/orthofinder_run/Results_Dec10/Orthogroups/Orthogroups.tsv \
+  /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/scripts/orthology/DC3000_protein_12_2025.faa \
+  /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/scripts/orthology/plate25.C2.annotation.faa
+
+
+
 
 set -euo pipefail
 

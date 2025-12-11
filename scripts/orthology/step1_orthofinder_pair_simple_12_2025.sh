@@ -4,7 +4,15 @@
 # Usage:
 #   ./orthofinder_pair_simple.sh <protA.faa> <protB.faa> <out_parent_dir> [threads]
 # Example:
-#   ./orthofinder_pair_simple.sh DC3000_protein_12_2025.faa plate25.C2.annotation.faa ~/orthofinder_out 4
+
+
+#./orthofinder_pair_simple.sh \
+# /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/scripts/orthology/DC3000_protein_12_2025.faa \
+  /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/scripts/orthology/plate25.C2.annotation.faa \
+  /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run \
+  4
+
+
 
 set -euo pipefail
 
