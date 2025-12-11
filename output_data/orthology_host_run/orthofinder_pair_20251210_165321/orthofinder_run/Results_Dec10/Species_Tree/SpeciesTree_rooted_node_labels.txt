@@ -1,0 +1,1 @@
+(DC3000_protein_12_2025:1,plate25.C2.annotation:1)N0;

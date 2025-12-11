@@ -1,0 +1,2 @@
+0: DC3000_protein_12_2025.faa
+1: plate25.C2.annotation.faa

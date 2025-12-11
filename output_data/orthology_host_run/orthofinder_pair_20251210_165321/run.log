@@ -1,0 +1,281 @@
+Started at Wed Dec 10 16:53:21 MST 2025
+Proteome A: /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/scripts/orthology/DC3000_protein_12_2025.faa
+Proteome B: /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/scripts/orthology/plate25.C2.annotation.faa
+Host output base: /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run
+Threads: 4
+=== Trying host OrthoFinder run ===
+Staged proteomes at: /tmp/orthopair_host_pysNLA
+Running: orthofinder -f /tmp/orthopair_host_pysNLA -t 4 -a 1 -o /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/orthofinder_pair_20251210_165321/host_run
+Traceback (most recent call last):
+  File "/Users/talia/opt/anaconda3/bin/scripts_of/__main__.py", line 1678, in main
+    ptm_initialised = parallel_task_manager.ParallelTaskManager_singleton()
+  File "/Users/talia/opt/anaconda3/bin/scripts_of/parallel_task_manager.py", line 321, in __init__
+    ParallelTaskManager_singleton.instance = ParallelTaskManager_singleton.__Singleton()
+  File "/Users/talia/opt/anaconda3/bin/scripts_of/parallel_task_manager.py", line 316, in __init__
+    self.manager_process.start()
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/process.py", line 121, in start
+    self._popen = self._Popen(self)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/context.py", line 224, in _Popen
+    return _default_context.get_context().Process._Popen(process_obj)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/context.py", line 284, in _Popen
+    return Popen(process_obj)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/popen_spawn_posix.py", line 32, in __init__
+    super().__init__(process_obj)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/popen_fork.py", line 19, in __init__
+    self._launch(process_obj)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/popen_spawn_posix.py", line 42, in _launch
+    prep_data = spawn.get_preparation_data(process_obj._name)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/spawn.py", line 154, in get_preparation_data
+    _check_not_importing_main()
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/spawn.py", line 134, in _check_not_importing_main
+    raise RuntimeError('''
+RuntimeError: 
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/spawn.py", line 125, in _main
+    prepare(preparation_data)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/spawn.py", line 236, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+  File "/Users/talia/opt/anaconda3/lib/python3.9/runpy.py", line 288, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/Users/talia/opt/anaconda3/lib/python3.9/runpy.py", line 97, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/Users/talia/opt/anaconda3/lib/python3.9/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/Users/talia/opt/anaconda3/bin/orthofinder", line 7, in <module>
+    main(args)
+  File "/Users/talia/opt/anaconda3/bin/scripts_of/__main__.py", line 1771, in main
+    ptm = parallel_task_manager.ParallelTaskManager_singleton()
+  File "/Users/talia/opt/anaconda3/bin/scripts_of/parallel_task_manager.py", line 321, in __init__
+    ParallelTaskManager_singleton.instance = ParallelTaskManager_singleton.__Singleton()
+  File "/Users/talia/opt/anaconda3/bin/scripts_of/parallel_task_manager.py", line 316, in __init__
+    self.manager_process.start()
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/process.py", line 121, in start
+    self._popen = self._Popen(self)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/context.py", line 224, in _Popen
+    return _default_context.get_context().Process._Popen(process_obj)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/context.py", line 284, in _Popen
+    return Popen(process_obj)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/popen_spawn_posix.py", line 32, in __init__
+    super().__init__(process_obj)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/popen_fork.py", line 19, in __init__
+    self._launch(process_obj)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/popen_spawn_posix.py", line 42, in _launch
+    prep_data = spawn.get_preparation_data(process_obj._name)
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/spawn.py", line 154, in get_preparation_data
+    _check_not_importing_main()
+  File "/Users/talia/opt/anaconda3/lib/python3.9/multiprocessing/spawn.py", line 134, in _check_not_importing_main
+    raise RuntimeError('''
+RuntimeError: 
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.
+
+OrthoFinder version 2.4.0 Copyright (C) 2014 David Emms
+
+ERROR: non-default output directory already exists: /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/orthofinder_pair_20251210_165321/host_run/
+
+ERROR: An error occurred, ***please review the error messages*** they may contain useful information about the problem.
+Host run finished.
+No Results_* found under /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/orthofinder_pair_20251210_165321/host_run
+Host run failed or incomplete. Trying Docker...
+=== Trying Docker OrthoFinder run ===
+Staged proteomes at: /tmp/orthopair_docker_xTD73H
+CONTAINER PATH=/usr/bin:/opt/conda/envs/ofenv/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+CONTAINER PATH=/usr/bin:/opt/conda/envs/ofenv/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+/opt/conda/envs/ofenv/bin/diamond
+/opt/conda/envs/ofenv/bin/diamond
+diamond version 0.8.36
+diamond version 0.8.36
+/opt/conda/envs/ofenv/bin/orthofinder
+/opt/conda/envs/ofenv/bin/orthofinder
+Python 3.10.19
+Python 3.10.19
+
+OrthoFinder version 2.4.0 Copyright (C) 2014 David Emms
+
+2025-12-10 23:53:28 : Starting OrthoFinder
+4 thread(s) for highly parallel tasks (BLAST searches etc.)
+1 thread(s) for OrthoFinder algorithm
+
+Checking required programs are installed
+----------------------------------------
+Test can run "mcl -h" - ok
+Test can run "fastme -i /data/out_parent/orthofinder_run/Results_Dec10/WorkingDirectory/SimpleTest.phy -o /data/out_parent/orthofinder_run/Results_Dec10/WorkingDirectory/SimpleTest.tre" - ok
+
+Dividing up work for BLAST for parallel processing
+--------------------------------------------------
+2025-12-10 23:53:28 : Creating diamond database 1 of 2
+2025-12-10 23:53:28 : Creating diamond database 2 of 2
+
+Running diamond all-versus-all
+------------------------------
+Using 4 thread(s)
+2025-12-10 23:53:28 : This may take some time....
+
+OrthoFinder version 2.4.0 Copyright (C) 2014 David Emms
+
+2025-12-10 23:53:28 : Starting OrthoFinder
+4 thread(s) for highly parallel tasks (BLAST searches etc.)
+1 thread(s) for OrthoFinder algorithm
+
+Checking required programs are installed
+----------------------------------------
+Test can run "mcl -h" - ok
+Test can run "fastme -i /data/out_parent/orthofinder_run/Results_Dec10/WorkingDirectory/SimpleTest.phy -o /data/out_parent/orthofinder_run/Results_Dec10/WorkingDirectory/SimpleTest.tre" - ok
+
+Dividing up work for BLAST for parallel processing
+--------------------------------------------------
+2025-12-10 23:53:28 : Creating diamond database 1 of 2
+2025-12-10 23:53:28 : Creating diamond database 2 of 2
+
+Running diamond all-versus-all
+------------------------------
+Using 4 thread(s)
+2025-12-10 23:53:28 : This may take some time....
+2025-12-10 23:53:28 : Done 0 of 4
+2025-12-10 23:53:28 : Done 0 of 4
+2025-12-10 23:53:53 : Done all-versus-all sequence search
+
+Running OrthoFinder algorithm
+-----------------------------
+2025-12-10 23:53:53 : Initial processing of each species
+2025-12-10 23:53:53 : Done all-versus-all sequence search
+
+Running OrthoFinder algorithm
+-----------------------------
+2025-12-10 23:53:53 : Initial processing of each species
+2025-12-10 23:53:53 : Initial processing of species 0 complete
+2025-12-10 23:53:53 : Initial processing of species 1 complete
+2025-12-10 23:53:53 : Initial processing of species 0 complete
+2025-12-10 23:53:53 : Initial processing of species 1 complete
+2025-12-10 23:53:56 : Connected putative homologues
+2025-12-10 23:53:56 : Connected putative homologues
+2025-12-10 23:53:56 : Written final scores for species 0 to graph file
+2025-12-10 23:53:56 : Written final scores for species 1 to graph file
+2025-12-10 23:53:56 : Written final scores for species 0 to graph file
+2025-12-10 23:53:56 : Written final scores for species 1 to graph file
+2025-12-10 23:53:57 : Ran MCL
+
+Writing orthogroups to file
+---------------------------
+OrthoFinder assigned 9466 genes (88.8% of total) to 4126 orthogroups. Fifty percent of all genes were in orthogroups with 2 or more genes (G50 was 2) and were contained in the largest 2059 orthogroups (O50 was 2059). There were 3990 orthogroups with all species present and 3404 of these consisted entirely of single-copy genes.
+
+2025-12-10 23:54:22 : Done orthogroups
+
+Analysing Orthogroups
+=====================
+
+Calculating gene distances
+--------------------------
+2025-12-10 23:53:57 : Ran MCL
+
+Writing orthogroups to file
+---------------------------
+OrthoFinder assigned 9466 genes (88.8% of total) to 4126 orthogroups. Fifty percent of all genes were in orthogroups with 2 or more genes (G50 was 2) and were contained in the largest 2059 orthogroups (O50 was 2059). There were 3990 orthogroups with all species present and 3404 of these consisted entirely of single-copy genes.
+
+2025-12-10 23:54:22 : Done orthogroups
+
+Analysing Orthogroups
+=====================
+
+Calculating gene distances
+--------------------------
+2025-12-10 23:54:27 : Done 200 of 258
+2025-12-10 23:54:27 : Done 200 of 258
+2025-12-10 23:54:25 : Done 0 of 258
+2025-12-10 23:54:26 : Done 100 of 258
+2025-12-10 23:54:25 : Done 0 of 258
+2025-12-10 23:54:26 : Done 100 of 258
+2025-12-10 23:54:25 : Done
+
+Inferring gene and species trees
+--------------------------------
+
+Reconciling gene trees and species tree
+---------------------------------------
+2025-12-10 23:54:28 : Starting Recon and orthologues
+2025-12-10 23:54:28 : Starting OF Orthologues
+2025-12-10 23:54:28 : Done 0 of 258
+2025-12-10 23:54:29 : Done 100 of 258
+2025-12-10 23:54:30 : Done 200 of 258
+2025-12-10 23:54:30 : Done OF Orthologues
+2025-12-10 23:54:30 : Done Recon
+
+Writing results files
+=====================
+2025-12-10 23:54:31 : Done orthologues
+
+Results:
+    /data/out_parent/orthofinder_run/Results_Dec10/
+
+CITATION:
+ When publishing work that uses OrthoFinder please cite:
+ Emms D.M. & Kelly S. (2019), Genome Biology 20:238
+
+ If you use the species tree in your work then please also cite:
+ Emms D.M. & Kelly S. (2017), MBE 34(12): 3267-3278
+ Emms D.M. & Kelly S. (2018), bioRxiv https://doi.org/10.1101/267914
+2025-12-10 23:54:25 : Done
+
+Inferring gene and species trees
+--------------------------------
+
+Reconciling gene trees and species tree
+---------------------------------------
+2025-12-10 23:54:28 : Starting Recon and orthologues
+2025-12-10 23:54:28 : Starting OF Orthologues
+2025-12-10 23:54:28 : Done 0 of 258
+2025-12-10 23:54:29 : Done 100 of 258
+2025-12-10 23:54:30 : Done 200 of 258
+2025-12-10 23:54:30 : Done OF Orthologues
+2025-12-10 23:54:30 : Done Recon
+
+Writing results files
+=====================
+2025-12-10 23:54:31 : Done orthologues
+
+Results:
+    /data/out_parent/orthofinder_run/Results_Dec10/
+
+CITATION:
+ When publishing work that uses OrthoFinder please cite:
+ Emms D.M. & Kelly S. (2019), Genome Biology 20:238
+
+ If you use the species tree in your work then please also cite:
+ Emms D.M. & Kelly S. (2017), MBE 34(12): 3267-3278
+ Emms D.M. & Kelly S. (2018), bioRxiv https://doi.org/10.1101/267914
+Found results: /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/orthofinder_pair_20251210_165321/orthofinder_run/Results_Dec10
+ERROR: Orthogroups.csv not found at /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/orthofinder_pair_20251210_165321/orthofinder_run/Results_Dec10/Orthogroups.csv
+Docker run + parse succeeded.
+Done at Wed Dec 10 16:54:32 MST 2025

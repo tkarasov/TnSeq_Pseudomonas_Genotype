@@ -1,0 +1,100 @@
+	DC3000_protein_12_2025	plate25.C2.annotation
+Number of genes	5423	5238
+Number of genes in orthogroups	4774	4692
+Number of unassigned genes	649	546
+Percentage of genes in orthogroups	88.0	89.6
+Percentage of unassigned genes	12.0	10.4
+Number of orthogroups containing species	4096	4020
+Percentage of orthogroups containing species	99.3	97.4
+Number of species-specific orthogroups	106	30
+Number of genes in species-specific orthogroups	275	117
+Percentage of genes in species-specific orthogroups	5.1	2.2
+
+
+Number of genes per-species in orthogroup	Number of orthogroups	Number of orthogroups
+'0	30	106
+'1	3638	3579
+'2	350	334
+'3	65	63
+'4	20	15
+'5	12	12
+'6	4	7
+'7	1	6
+'8	1	1
+'9	2	1
+'10	1	0
+11-15	1	1
+16-20	0	1
+21-50	1	0
+51-100	0	0
+101-150	0	0
+151-200	0	0
+201-500	0	0
+501-1000	0	0
+'1001+	0	0
+
+Number of genes per-species in orthogroup	Percentage of orthogroups	Percentage of orthogroups
+'0	0.7	2.6
+'1	88.2	86.7
+'2	8.5	8.1
+'3	1.6	1.5
+'4	0.5	0.4
+'5	0.3	0.3
+'6	0.1	0.2
+'7	0.0	0.1
+'8	0.0	0.0
+'9	0.0	0.0
+'10	0.0	0.0
+11-15	0.0	0.0
+16-20	0.0	0.0
+21-50	0.0	0.0
+51-100	0.0	0.0
+101-150	0.0	0.0
+151-200	0.0	0.0
+201-500	0.0	0.0
+501-1000	0.0	0.0
+'1001+	0.0	0.0
+
+Number of genes per-species in orthogroup	Number of genes	Number of genes
+'0	0	0
+'1	3638	3579
+'2	700	668
+'3	195	189
+'4	80	60
+'5	60	60
+'6	24	42
+'7	7	42
+'8	8	8
+'9	18	9
+'10	10	0
+11-15	12	15
+16-20	0	20
+21-50	22	0
+51-100	0	0
+101-150	0	0
+151-200	0	0
+201-500	0	0
+501-1000	0	0
+'1001+	0	0
+
+Number of genes per-species in orthogroup	Percentage of genes	Percentage of genes
+'0	0.0	0.0
+'1	67.1	68.3
+'2	12.9	12.8
+'3	3.6	3.6
+'4	1.5	1.1
+'5	1.1	1.1
+'6	0.4	0.8
+'7	0.1	0.8
+'8	0.1	0.2
+'9	0.3	0.2
+'10	0.2	0.0
+11-15	0.2	0.3
+16-20	0.0	0.4
+21-50	0.4	0.0
+51-100	0.0	0.0
+101-150	0.0	0.0
+151-200	0.0	0.0
+201-500	0.0	0.0
+501-1000	0.0	0.0
+'1001+	0.0	0.0

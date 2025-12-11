@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# orthofinder_pair_onefile.sh
+# Usage:
+#   ./orthofinder_pair_onefile.sh <protA.faa> <protB.faa> <out_parent_dir> [threads]
+#
+# Tries Docker first, with robust logging. Falls back to host orthofinder if Docker is not usable.
+
+set -euo pipefail
+
+if [ "$#" -lt 3 ]; then
+  echo "Usage: $0 <protA.faa> <protB.faa> <out_parent_dir> [threads]"
+  exit 1
+fi
+
+PROT_A="$1"
+PROT_B="$2"
+OUT_PARENT="$3"
+THREADS="${4:-4}"
+DATE_TAG=$(date +%Y%m%d_%H%M%S)
+
+# Resolve absolute paths where possible (but allow non-existing out_parent to be created)
+PROT_A=$(realpath -e "$PROT_A" 2>/dev/null || realpath "$PROT_A")
+PROT_B=$(realpath -e "$PROT_B" 2>/dev/null || realpath "$PROT_B")
+OUT_PARENT=$(mkdir -p "$OUT_PARENT" && realpath "$OUT_PARENT")
+
+# Basic checks
+if [ ! -f "$PROT_A" ]; then echo "ERROR: protA not found: $PROT_A"; exit 2; fi
+if [ ! -f "$PROT_B" ]; then echo "ERROR: protB not found: $PROT_B"; exit 2; fi
+
+OUT_SUBDIR="orthofinder_pair_run_${DATE_TAG}"
+HOST_OUT_DIR="${OUT_PARENT}/${OUT_SUBDIR}"
+mkdir -p "$HOST_OUT_DIR"
+LOGFILE="${HOST_OUT_DIR}/orthofinder_run.log"
+
+# Function: parse Orthogroups.csv into strict one-to-one pairs (two species only)
+parse_one2one() {
+  local results_dir="$1"
+  local fileA="$(basename "$PROT_A")"
+  local fileB="$(basename "$PROT_B")"
+  local csv="${results_dir}/Orthogroups.csv"
+  local outdir="${results_dir}/one2one_pairs"
+  mkdir -p "$outdir"
+  local outtsv="${outdir}/one2one_${fileA}_vs_${fileB}.tsv"
+  if [ ! -f "$csv" ]; then
+    echo "parse_one2one: Orthogroups.csv not found at $csv" >&2
+    return 1
+  fi
+
+  python3 - <<PYEOF
+import csv, sys, os
+csvf = os.path.expanduser("${csv}")
+outf = os.path.expanduser("${outtsv}")
+fA = "${fileA}"
+fB = "${fileB}"
+with open(csvf,newline='') as fh:
+    r = csv.reader(fh)
+    hdr = next(r)
+    species = [h.strip() for h in hdr[1:]]
+    if fA not in species or fB not in species:
+        print("ERROR: species names not found in Orthogroups.csv header.", file=sys.stderr)
+        print("Header species:", ",".join(species), file=sys.stderr)
+        sys.exit(2)
+    ogs = []
+    for row in r:
+        og = row[0].strip()
+        mapping = {}
+        for i,sp in enumerate(species, start=1):
+            cell = row[i].strip() if i < len(row) else ""
+            genes = [g.strip() for g in cell.split(';') if g.strip()] if cell else []
+            mapping[sp] = genes
+        ogs.append((og,mapping))
+with open(outf,'w',newline='') as outfh:
+    w = csv.writer(outfh, delimiter='\t')
+    w.writerow(["Orthogroup","SpeciesA","GeneA","SpeciesB","GeneB"])
+    for og,m in ogs:
+        g1 = m.get(fA,[])
+        g2 = m.get(fB,[])
+        if len(g1)==1 and len(g2)==1:
+            w.writerow([og,fA,g1[0],fB,g2[0]])
+print("Wrote one-to-one TSV:", outf)
+PYEOF
+}
+
+# 1) Try Docker path if docker is available
+if command -v docker >/dev/null 2>&1; then
+  echo "Docker detected. Attempting to run OrthoFinder inside Docker image 'orthofinder:2.4_fixed'..." | tee "$LOGFILE"
+  # Create staging dir for two proteomes
+  STAGE_DIR=$(mktemp -d /tmp/orthopair_prots_XXXXXX)
+  cp "$PROT_A" "$STAGE_DIR/$(basename "$PROT_A")"
+  cp "$PROT_B" "$STAGE_DIR/$(basename "$PROT_B")"
+  echo "Staged proteomes at: $STAGE_DIR" | tee -a "$LOGFILE"
+
+  # Determine a writable host output dir and map into container
+  CONTAINER_OUT="/data/out"
+  # run docker and force PATH so diamond & orthofinder are found (both common locations)
+  DOCKER_IMAGE="orthofinder:2.4_fixed"
+  echo "Running docker image: $DOCKER_IMAGE" | tee -a "$LOGFILE"
+
+  # run container and stream logs to host logfile (capture container exit status)
+  container_id=$(docker run -d \
+    -v "${STAGE_DIR}":/data/prot:ro \
+    -v "${HOST_OUT_DIR}":/data/out_parent \
+    --entrypoint /bin/bash \
+    "$DOCKER_IMAGE" -lc "export PATH=/usr/bin:/opt/conda/envs/ofenv/bin:\$PATH; echo CONTAINER_PATH=\$PATH; \
+      echo '--- WHICH diamond ---'; which diamond || true; diamond version || true; \
+      echo '--- WHICH orthofinder ---'; which orthofinder || true; python3 --version || true; \
+      orthofinder -f /data/prot -t ${THREADS} -a 1 -o /data/out_parent/orthofinder_run" 2>>"${LOGFILE}" || true
+
+  if [ -z "$container_id" ]; then
+    echo "docker run failed to start container (no container id). See $LOGFILE" | tee -a "$LOGFILE"
+  else
+    echo "Started container: $container_id" | tee -a "$LOGFILE"
+    # stream logs (follow until container exits)
+    echo "Streaming container logs (this will block until the run completes)..." | tee -a "$LOGFILE"
+    docker logs -f "$container_id" 2>&1 | tee -a "$LOGFILE" || true
+    exitcode=$(docker inspect "$container_id" --format '{{.State.ExitCode}}' 2>/dev/null || echo "unknown")
+    echo "Container $container_id exited with code: $exitcode" | tee -a "$LOGFILE"
+    # ensure container removed
+    docker rm -f "$container_id" >/dev/null 2>&1 || true
+  fi
+
+  # If Docker apparently produced output directories, find results
+  # The container wrote to /data/out_parent/orthofinder_run on host -> HOST_OUT_DIR/orthofinder_run
+  HOST_RESULTS_DIR="${HOST_OUT_DIR}/orthofinder_run/Results_"*
+  # pick newest results folder if present
+  found_results=""
+  for d in ${HOST_RESULTS_DIR}; do
+    if [ -d "$d" ]; then found_results="$d"; break; fi
+  done
+  if [ -z "$found_results" ]; then
+    # try alternative: OrthoFinder may have created a Results_* under HOST_OUT_DIR directly
+    found_results=$(find "$HOST_OUT_DIR" -maxdepth 2 -type d -name "Results_*" -print | sort | tail -n1 || true)
+  fi
+
+  if [ -n "$found_results" ] && [ -d "$found_results" ]; then
+    echo "Found OrthoFinder results at: $found_results" | tee -a "$LOGFILE"
+    parse_one2one "$found_results" | tee -a "$LOGFILE" || true
+    echo "All done. Host output dir: $HOST_OUT_DIR" | tee -a "$LOGFILE"
+    echo "Detailed run log: $LOGFILE"
+    exit 0
+  else
+    echo "Docker run did not create Results_* (or they were not found). See $LOGFILE for container logs." | tee -a "$LOGFILE"
+    echo "Attempting fallback to host orthofinder (if available)..." | tee -a "$LOGFILE"
+    # continue to host fallback
+  fi
+else
+  echo "Docker not available on this host; will attempt host orthofinder run." | tee -a "$LOGFILE"
+fi
+
+# 2) Fallback: run orthofinder on host
+ORTHO=$(command -v orthofinder || true)
+DIAMOND=$(command -v diamond || true)
+PYTHON_CMD=$(command -v python3 || command -v python || true)
+
+if [ -z "$ORTHO" ] || [ -z "$DIAMOND" ] || [ -z "$PYTHON_CMD" ]; then
+  echo "ERROR: Host fallback not possible. Missing required tools." | tee -a "$LOGFILE"
+  echo "orthofinder: $(command -v orthofinder || echo 'NOT FOUND')" | tee -a "$LOGFILE"
+  echo "diamond: $(command -v diamond || echo 'NOT FOUND')" | tee -a "$LOGFILE"
+  echo "python3: $(command -v python3 || echo 'NOT FOUND')" | tee -a "$LOGFILE"
+  echo "Please install docker or ensure host orthofinder+diamond+python3 are in PATH." | tee -a "$LOGFILE"
+  exit 5
+fi
+
+echo "Running host orthofinder: $ORTHO" | tee -a "$LOGFILE"
+# Use temporary staging dir for host run as well
+HOST_STAGE=$(mktemp -d /tmp/orthopair_prots_XXXXXX_host)
+cp "$PROT_A" "$HOST_STAGE/$(basename "$PROT_A")"
+cp "$PROT_B" "$HOST_STAGE/$(basename "$PROT_B")"
+echo "Staged host proteomes at: $HOST_STAGE" | tee -a "$LOGFILE"
+
+# Run host orthofinder; use -a 1 to reduce multiprocessing spawn issues (macOS)
+"$ORTHO" -f "$HOST_STAGE" -t "$THREADS" -a 1 -o "${HOST_OUT_DIR}/orthofinder_run_host" 2>&1 | tee -a "$LOGFILE" || true
+
+# Search for results
+HOST_FOUND=$(find "${HOST_OUT_DIR}" -maxdepth 3 -type d -name "Results_*" -print | sort | tail -n1 || true)
+if [ -n "$HOST_FOUND" ] && [ -d "$HOST_FOUND" ]; then
+  echo "Found host-run results: $HOST_FOUND" | tee -a "$LOGFILE"
+  parse_one2one "$HOST_FOUND" | tee -a "$LOGFILE" || true
+  echo "Done. Host run output dir: $HOST_OUT_DIR" | tee -a "$LOGFILE"
+  exit 0
+else
+  echo "Host run did not produce Results_*. Check log: $LOGFILE" | tee -a "$LOGFILE"
+  exit 6
+fi

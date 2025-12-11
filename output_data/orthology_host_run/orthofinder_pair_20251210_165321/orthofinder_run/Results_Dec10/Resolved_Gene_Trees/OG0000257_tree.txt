@@ -1,0 +1,1 @@
+(plate25_C2_annotation_DAKCFMEO_00977:0,((plate25_C2_annotation_DAKCFMEO_02071:0.266694,plate25_C2_annotation_DAKCFMEO_03371:5.02675e-07)n2:0.029873,plate25_C2_annotation_DAKCFMEO_05236:0.235981)n1:0)n0;

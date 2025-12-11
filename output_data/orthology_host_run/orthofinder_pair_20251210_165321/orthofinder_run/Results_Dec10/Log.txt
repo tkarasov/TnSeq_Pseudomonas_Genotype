@@ -1,0 +1,12 @@
+2025-12-10 23:53:28 : Started OrthoFinder version 2.4.0
+Command Line: /opt/conda/envs/ofenv/bin/orthofinder -f /data/prot -t 4 -a 1 -o /data/out_parent/orthofinder_run
+
+WorkingDirectory_Base: /data/out_parent/orthofinder_run/Results_Dec10/WorkingDirectory/
+
+Species used: 
+0: DC3000_protein_12_2025.faa
+1: plate25.C2.annotation.faa
+
+FN_Orthogroups: /data/out_parent/orthofinder_run/Results_Dec10/WorkingDirectory/clusters_OrthoFinder_I1.5.txt_id_pairs.txt
+WorkingDirectory_Trees: /data/out_parent/orthofinder_run/Results_Dec10/WorkingDirectory/
+2025-12-10 23:54:31 : OrthoFinder run completed
