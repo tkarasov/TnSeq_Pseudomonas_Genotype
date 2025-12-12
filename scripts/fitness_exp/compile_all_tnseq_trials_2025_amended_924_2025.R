@@ -16,7 +16,22 @@ setwd('/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive
 # orthologs <- read.table("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/orthologues_dc3000_p25_c2_7_2022.txt", 
 #                        header = TRUE,
 #                        sep = "\t")
-orthologs <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", header = TRUE, row.names = 1, sep = ",")
+#orthologs <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", header = TRUE, row.names = 1, sep = ",")
+
+# on 12/12/2025 I rewrote the orthology file to use diamond and step0 through step3 outputs. 
+orthologs <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/blast_pairs_vs_orthogroups_matches_safe.csv", header = TRUE, sep = ",")
+
+# I need to take the names from the orthologs$p25_DAK and add a column that is the  p25_BJE column from the noReps file in old_orths
+old_orths <- orthologs <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", header = TRUE, row.names = 1, sep = ",")
+
+# add a column to orthologs that takes the p25_BJE from old_orths that matches the p25_DAK in orthologs. 
+orthologs$p25_BJE <- old_orths[match(orthologs$p25_DAK, old_orths$p25_DAK), "p25_BJE"]
+
+# remove the ones that are duplicated in p25_BJE
+orthologs <- orthologs[!duplicated(orthologs$p25_BJE), ]
+
+
+
 ##################################################
 # In this first section I am compiling Effie's experiments together. This corresponds to exp_0001 and exp_0002
 ##################################################
@@ -95,10 +110,10 @@ saveRDS(p25_23_counts, "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@g
 
 # This older ortholog mapping file is messed up
 # Create a file to merge on gene name
-ortho <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", sep = ",", header = TRUE, row.names=1)
+#ortho <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", sep = ",", header = TRUE, row.names=1)
 # the third column is the WP ID in DC3000, the second column is the BJE name in p25_c2
 #add the ortholog data to eash rds
-
+ortho<- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/blast_pairs_vs_orthogroups_matches_safe.csv", header = TRUE, sep = ",")
 gene_dc22 <- colnames(dc_23_counts[[2]])
 
 pull_gene_name <- function(counts_table, start_gene){
@@ -117,10 +132,10 @@ pull_gene_name <- function(counts_table, start_gene){
 }
 
 counts_table = p25_22_counts
-ortho_dict <- orthologs[,2] # second column is the BJE
-names(ortho_dict) <- orthologs[,3] #third column is DC3000
-reverse_dict <- orthologs[,3]
-names(reverse_dict) <- orthologs[,2]
+ortho_dict <- orthologs$p25_BJE# first column is the p25_DAK
+names(ortho_dict) <- orthologs$DC3000 #third column is DC3000
+reverse_dict <- orthologs$DC3000
+names(reverse_dict) <- orthologs$p25_BJE
 
 pull_gene_name_ortho <- function(counts_table, orthologs, start_gene){
   # relabel p25_c2 counts table 

@@ -1,0 +1,12 @@
+Reciprocal Best Hits Summary
+============================
+Input A: DC3000_protein.faa
+Input B: plate25.C2.annotation.faa
+E-value cutoff: 1e-10
+Percent identity cutoff: 30
+Coverage cutoff: 0.60
+
+RBH count: 4100
+Filtered A→B hits: 9990
+Filtered B→A hits: 10017
+Output directory: /Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/ortholog_diamond_12_2025/rbh_20251211_165439
