@@ -22,7 +22,7 @@ setwd('/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive
 orthologs <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/blast_pairs_vs_orthogroups_matches_safe.csv", header = TRUE, sep = ",")
 
 # I need to take the names from the orthologs$p25_DAK and add a column that is the  p25_BJE column from the noReps file in old_orths
-old_orths <- orthologs <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", header = TRUE, row.names = 1, sep = ",")
+old_orths <-read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", header = TRUE, row.names = 1, sep = ",")
 
 # add a column to orthologs that takes the p25_BJE from old_orths that matches the p25_DAK in orthologs. 
 orthologs$p25_BJE <- old_orths[match(orthologs$p25_DAK, old_orths$p25_DAK), "p25_BJE"]

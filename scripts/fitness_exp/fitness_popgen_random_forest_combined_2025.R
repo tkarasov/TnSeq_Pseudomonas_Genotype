@@ -16,6 +16,9 @@ library(patchwork)
 
 setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
 
+source("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/scripts/isme_fig_settings.R")
+
+
 my_tufte_plot <- function(p) {
   p + 
     theme_minimal(base_size = 10) +
@@ -162,9 +165,10 @@ div_pear <- ggplot(cor_by_bin2, aes(x = div_mid, y = cor_val)) +
     y = "Correlation of fitness effect (DC3000 vs P25.c2 logFC)"
   )
 
-pdf("divergence_correlatedFC.pdf", width = 3.5, height = 3, family = "Helvetica")  # Nature Eco
-my_tufte_plot(div_pear)
-dev.off()
+#pdf("divergence_correlatedFC.pdf", width = 3.5, height = 3, family = "Helvetica")  # Nature Eco
+p1 <- my_tufte_plot(div_pear)
+#dev.off()
+save_figure("divergence_correlatedFC2.pdf",p1)
 
 ################
 #Now Let's move into the section where we look at the explanatory impact of different variables. read in the Tsuda expression data
@@ -206,8 +210,6 @@ cor.test(exp$Col.0_Pto, exp$MM_Pto)
 
 
 # Let's do modeling to understand which predictors matter most.At first I did random forest but I am not liking how I am handling the interaction betwen divergence and expression so will try glmnet
-
-
 
 
 library(glmnet)
@@ -278,12 +280,7 @@ labels_df <- plot_data %>%
     cor_test = list(if (n_obs >= 3) {
       tryCatch(cor.test(Value, logFC_DC3000_col0, use = "complete.obs"),
                error = function(e) NULL)
-    } else NULL),
-    .groups = "drop"
-  ) %>% mutate(
-    R = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)),
-    p = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),
-    label = map2_chr(R, p, ~ {
+    } else NULL),.groups = "drop") %>% mutate(R = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)), p = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),label = map2_chr(R, p, ~ {
       if (is.na(.x)) {
         "insufficient\npoints"
       } else {

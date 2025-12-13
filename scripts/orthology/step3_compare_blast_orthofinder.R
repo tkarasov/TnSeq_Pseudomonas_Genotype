@@ -1,4 +1,4 @@
-# This script compares the output from Effie's blast best hits to the orthofinder analysis done with steps1 and 2
+# This script compares the output from Effie's blast best hits (I amended to new best hits with diamond) to the orthofinder analysis done with steps1 and 2
 #!/usr/bin/env Rscript
 # step3_compare_blast_orthofinder_safe.R
 # Safe, verbose comparison: for BLAST rows where DC3000 is present
@@ -51,9 +51,14 @@ for (i in 1:nrow(blast_lookup)) {
 out_csv="/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/orthology_host_run/blast_pairs_vs_orthogroups_matches_safe.csv"
 write.csv(results, out_csv, row.names = FALSE)
 
-# 4011 positive matches and 24 negative matches
 ortholog_subset <- results[!is.na(results$DC3000) &
                                   trimws(results$DC3000) != "", ]
+# there are 4100 in the best reciprocal hits and 3990 in the ortholog pairs. What differs?
+# ask if there are any pairs in blast that are not in orthologs. Basically ask if there are any blast_lookup key,value pairs that are not found in the orthogroup 
+
+
+
+
 
 # find columns in which have duplicated DC3000 values
 duplicated_dc3000 <- ortholog_subset$DC3000[duplicated(ortholog_subset$DC3000) | duplicated(ortholog_subset$DC3000, fromLast = TRUE)]
@@ -61,4 +66,4 @@ duplicated_rows <- ortholog_subset %>%
   filter(DC3000 %in% duplicated_dc3000) %>%
   arrange(DC3000)
 
-# OK there are 85 rows of duplicated DC3000 values. No longer. After I used the diamond pipeline on 12/12/2025 I no longer had the issue with duplicates
+# ON 12/12/2025 there were no duplicate rows
