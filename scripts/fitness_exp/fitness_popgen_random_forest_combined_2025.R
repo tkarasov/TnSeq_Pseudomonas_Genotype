@@ -93,11 +93,15 @@ for(rowname in rownames(conservation2)){
 # What is the output for the estimated LFC of P25.C2 and DC3000.
 # Now combine the diversity and tnseq files
 lfc_df <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000logFC_time_DC3000_vs_P25c2_12_2025.csv", header=TRUE)
+
+
 rownames(lfc_df) <- lfc_df$gene
 fit_con <- merge(conservation2, lfc_df, by=0, all=TRUE)
 rownames(fit_con) <- fit_con$Row.names
 fit_con$gene <- rownames(fit_con)
 blast_div$gene <- rownames(blast_div)
+# I want to give lfc_df a new column if the gene  is significant in DC3000 in the padj_DC3000_time of sig_results (<0.01)
+lfc_df$Significant <- ifelse(lfc_df$gene %in% sig_results[sig_results$padj_DC3000_time<0.01,]$gene, "Yes", "No")
 # remove if present
 if ("Row.names" %in% names(fit_con)) fit_con$Row.names <- NULL
 
@@ -109,7 +113,6 @@ any(duplicated(names(merged)))   # should be FALSE
 fit_con <- merge(fit_con, blast_div, by = "gene")
 
 fit_con <- merge(fit_con, blast_div, by=0, all=TRUE)
-# There are ~6 genes in blast_div not in fit_con before merge
 
 # now we can ask how the time in tree relates to the fitness effect
 model1 <- lm(data=fit_con, logFC_DC3000 ~ Time.in.tree + Genetic_Diversity + Num_gene_events)
@@ -245,136 +248,184 @@ cor.test(exp$Col.0_Pto, exp$MM_Pto)
 
 library(glmnet)
 
-# Step 0: Define relevant variables
-vars <- c("logFC_P25C2", "logFC_DC3000", "perc_div_aa", 
-          "Num_gene_events", "Genetic_Diversity", "Col.0_Pto", "KB_Pto")
-
-# Step 1: Clean data and add interaction term
-# fit_exp_clean <- fit_exp %>%
-#   dplyr::select(all_of(vars)) %>%
-#   mutate(div_x_dc3000 = perc_div_aa * logFC_DC3000) %>%
+# # Step 0: Define relevant variables
+# vars <- c("logFC_P25C2", "logFC_DC3000", "perc_div_aa", 
+#           "Num_gene_events", "Genetic_Diversity", "Col.0_Pto", "KB_Pto")
+# 
+# # Step 1: Clean data and add interaction term
+# # fit_exp_clean <- fit_exp %>%
+# #   dplyr::select(all_of(vars)) %>%
+# #   mutate(div_x_dc3000 = perc_div_aa * logFC_DC3000) %>%
+# #   na.omit()
+# fit_exp$scaled_div <- scale(fit_exp$perc_div_aa.x)
+# fit_exp$scaled_logFC <- scale(fit_exp$logFC_DC3000)
+# fit_exp$interaction <- fit_exp$scaled_div * fit_exp$scaled_logFC
+# fit_exp_clean <- fit_exp %>% 
 #   na.omit()
-fit_exp$scaled_div <- scale(fit_exp$perc_div_aa.x)
-fit_exp$scaled_logFC <- scale(fit_exp$logFC_DC3000)
-fit_exp$interaction <- fit_exp$scaled_div * fit_exp$scaled_logFC
-fit_exp_clean <- fit_exp %>% 
-  na.omit()
+# 
+# #first let's graph against all the variables of interest
+# # Full code: faceted predictor plots with R / p labels in upper-right corner
+# library(dplyr)
+# library(tidyr)
+# library(ggplot2)
+# library(purrr)
+# 
+# 
+# # --- Ensure required columns exist; create numeric interaction if missing ---
+# if (!"interaction" %in% names(fit_exp_clean)) {
+#   if (all(c("logFC_P25c2_col0", "perc_div_aa") %in% names(fit_exp_clean))) {
+#     fit_exp_clean <- fit_exp_clean %>%
+#       mutate(interaction = logFC_P25c2 * perc_div_aa)
+#   } else {
+#     stop("Neither 'interaction' column exists nor the necessary columns to create it (logFC_P25c2_col0, perc_div_aa) are present.")
+#   }
+# }
 
-#first let's graph against all the variables of interest
-# Full code: faceted predictor plots with R / p labels in upper-right corner
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(purrr)
 
 
-# --- Ensure required columns exist; create numeric interaction if missing ---
-if (!"interaction" %in% names(fit_exp_clean)) {
-  if (all(c("logFC_P25c2_col0", "perc_div_aa") %in% names(fit_exp_clean))) {
-    fit_exp_clean <- fit_exp_clean %>%
-      mutate(interaction = logFC_P25c2 * perc_div_aa)
+library(dplyr); library(tidyr); library(ggplot2); library(broom)
+
+# ---------- 0) Choose predictors you want to plot / model --------------
+predictor_vars <- c("perc_div_aa.x", "Num_gene_events", "Genetic_Diversity",
+                    "Col.0_Pto", "logFC_P25c2", "Time.in.tree")   # edit as needed
+
+# ---------- 1) Quick availability report (useful summary) -------------
+avail <- sapply(c("logFC_DC3000", predictor_vars), function(col) {
+  if (col %in% names(fit_exp)) {
+    c(non_na = sum(!is.na(fit_exp[[col]])), unique_examples = paste(head(unique(na.omit(fit_exp[[col]])),3), collapse = ", "))
   } else {
-    stop("Neither 'interaction' column exists nor the necessary columns to create it (logFC_P25c2_col0, perc_div_aa) are present.")
+    c(non_na = 0, unique_examples = NA_character_)
+  }
+})
+avail <- as.data.frame(t(avail), stringsAsFactors = FALSE)
+avail$non_na <- as.numeric(avail$non_na)
+cat("Availability summary (non-NA counts):\n")
+print(avail)
+
+# ---------- 2) Normalize names if there are alternate names -------------
+# (you referenced both logFC_P25c2 and logFC_P25c2_col0 in earlier code)
+if (!("logFC_P25c2" %in% names(fit_exp)) & ("logFC_P25c2" %in% names(fit_exp))) {
+  fit_exp <- fit_exp %>% mutate(logFC_P25c2 = logFC_P25c2)
+}
+if (!("perc_div_aa.x" %in% names(fit_exp)) & ("perc_div_aa" %in% names(fit_exp))) {
+  fit_exp <- fit_exp %>% mutate(perc_div_aa.x = perc_div_aa)
+}
+
+# refresh list of actually usable predictors after normalization
+use_predictors <- intersect(predictor_vars, names(fit_exp))
+cat("Using predictors:", paste(use_predictors, collapse = ", "), "\n")
+
+# ---------- 3) Build a cleaned table for flexible plotting -------------
+# Keep rows with response present and at least one predictor present.
+fit_exp_clean2 <- fit_exp %>%
+  # ensure response exists
+  filter(!is.na(logFC_DC3000)) %>%
+  # require at least one predictor to be non-NA so that a facet will have data
+  filter(if_any(all_of(use_predictors), ~ !is.na(.x))) %>%
+  # keep original identifiers for troubleshooting
+  mutate(rowid = row_number())
+
+cat("Rows kept for plotting (response present + >=1 predictor):", nrow(fit_exp_clean2), "\n")
+
+# ---------- 4) Optionally create model-ready dataset (all predictors non-NA) ----------
+model_ready <- fit_exp_clean2 %>%
+  filter(complete.cases(select(., all_of(use_predictors))))
+
+cat("Rows with ALL chosen predictors present (model-ready):", nrow(model_ready), "\n")
+if (nrow(model_ready) == 0) {
+  cat("No rows have all predictors present. Consider dropping predictors or imputing.\n")
+}
+
+# ---------- 5) Create interaction column safely if needed ---------------
+if (!"interaction" %in% names(fit_exp_clean2)) {
+  if (all(c("logFC_P25c2", "perc_div_aa.x") %in% names(fit_exp_clean2))) {
+    fit_exp_clean2 <- fit_exp_clean2 %>%
+      mutate(interaction = logFC_P25c2 * perc_div_aa.x)
+    cat("Created 'interaction' = logFC_P25c2 * perc_div_aa.x\n")
+  } else {
+    cat("Did NOT create 'interaction' (missing logFC_P25c2 or perc_div_aa.x)\n")
   }
 }
 
-# --- Define predictor variables (as you provided) ---
-predictor_vars <- c("perc_div_aa.x", "Num_gene_events", "Genetic_Diversity",
-                    "Col.0_Pto", 
-                    "logFC_P25c2", "Time.in.tree")
-#"interaction", "KB_Pto", 
-# --- Prepare long-format plotting data (drop rows lacking the selected columns) ---
-needed_cols <- unique(c("logFC_DC3000", predictor_vars))
-missing_cols <- setdiff(needed_cols, names(fit_exp_clean))
-if (length(missing_cols) > 0) {
-  stop("Missing required columns in fit_exp_clean: ", paste(missing_cols, collapse = ", "))
-}
+# ---------- 6) Build plot_data (long format) for facetted plotting -----
+plot_data <- fit_exp_clean2 %>%
+  select(any_of(c("gene.x", "gene", "logFC_DC3000", use_predictors))) %>%
+  # keep an ID column if present
+  rename(gene_id = any_of(c("gene.x","gene"))) %>%
+  pivot_longer(cols = all_of(use_predictors), names_to = "Variable", values_to = "Value") %>%
+  mutate(Value = as.numeric(Value), logFC_DC3000 = as.numeric(logFC_DC3000)) %>%
+  filter(!is.na(Value) & !is.na(logFC_DC3000))
 
-plot_data <- fit_exp_clean %>%
-  dplyr::select(all_of(needed_cols)) %>%
-  # keep rows that have at least the response present (we'll let cor.test handle cases per variable)
-  filter(!is.na(logFC_DC3000)) %>%
-  pivot_longer(cols = -logFC_DC3000,
-               names_to = "Variable",
-               values_to = "Value")
+cat("Rows in plot_data (after pivot and filtering):", nrow(plot_data),
+    "unique Variables:", length(unique(plot_data$Variable)), "\n")
 
-# --- Compute per-Variable Pearson correlation tests safely ---
+if (nrow(plot_data) == 0) stop("No rows to plot after filtering. Check predictor names or data availability.")
+
+# ---------- 7) Compute labels_df with n, R, p and positions ----------
 labels_df <- plot_data %>%
   group_by(Variable) %>%
-  summarize(
+  summarise(
     n_obs = sum(!is.na(Value) & !is.na(logFC_DC3000)),
-    cor_test = list(if (n_obs >= 3) {
-      tryCatch(cor.test(Value, logFC_DC3000, use = "complete.obs"),
-               error = function(e) NULL)
-    } else NULL),.groups = "drop") %>% mutate(R = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)), p = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),label = map2_chr(R, p, ~ {
-      if (is.na(.x)) {
-        "insufficient\npoints"
-      } else {
-        paste0("R = ", formatC(.x, digits = 2, format = "f"), "\n", "p = ", signif(.y, 2))
-      }
-    })
-  )
-
-# --- Robust upper-right label positions per facet (5% inset) ---
-pos_df <- plot_data %>%
-  group_by(Variable) %>%
-  summarize(
-    x_max = if (all(is.na(Value))) NA_real_ else max(Value, na.rm = TRUE),
-    x_min = if (all(is.na(Value))) NA_real_ else min(Value, na.rm = TRUE),
-    y_max = if (all(is.na(logFC_DC3000))) NA_real_ else max(logFC_DC3000, na.rm = TRUE),
-    y_min = if (all(is.na(logFC_DC3000))) NA_real_ else min(logFC_DC3000, na.rm = TRUE),
+    R_val = ifelse(n_obs >= 2, cor(Value, logFC_DC3000, use = "complete.obs"), NA_real_),
+    p_val = if (n_obs >= 3) broom::tidy(cor.test(Value, logFC_DC3000))$p.value else NA_real_,
     .groups = "drop"
   ) %>%
   mutate(
-    x_span = x_max - x_min,
-    y_span = y_max - y_min,
-    # if span is zero/NA, fall back to a small absolute offset so the label can be placed
-    x_span = ifelse(is.na(x_span) | x_span == 0,
-                    ifelse(is.na(x_max), NA_real_, max(abs(x_max), 1) * 0.01 + 1e-6),
-                    x_span),
-    y_span = ifelse(is.na(y_span) | y_span == 0,
-                    ifelse(is.na(y_max), NA_real_, max(abs(y_max), 1) * 0.01 + 1e-6),
-                    y_span),
-    inset_frac = 0.05,  # 5% inset from the top-right corner
-    x_pos = ifelse(is.na(x_max), NA_real_, x_max - inset_frac * x_span),
-    y_pos = ifelse(is.na(y_max), NA_real_, y_max - inset_frac * y_span)
-  ) %>%
-  select(Variable, x_pos, y_pos)
-
-# --- Join label text with positions ---
-labels_df <- labels_df %>% left_join(pos_df, by = "Variable")
-
-# --- Build and display the faceted plot ---
-p <- ggplot(plot_data, aes(x = Value, y = logFC_DC3000)) +
-  geom_point(size = 1.2, alpha = 0.8) +
-  geom_smooth(method = "lm", se = FALSE, linewidth = 0.4, linetype = "dashed", color = "black") +
-  facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
-  geom_text(
-    data = labels_df,
-    aes(x = x_pos, y = y_pos, label = label),
-    hjust = 1, vjust = 1, size = 3.1,
-    na.rm = TRUE
-  ) +
-  labs(
-    x = NULL,
-    y = expression(log[2] * "FC in DC3000"),
-    title = expression("Predictors vs. log"[2] * "FC in DC3000")
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    strip.background = element_blank(),
-    strip.text = element_text(face = "bold"),
-    panel.grid = element_blank(),
-    axis.line = element_line(linewidth = 0.3),
-    axis.ticks = element_line(linewidth = 0.3)
+    label_main = paste0("n=", n_obs, ifelse(!is.na(p_val), paste0("\n", "p=", signif(p_val,2)), "")),
+    label_R = ifelse(!is.na(R_val), paste0("R=", signif(R_val,2)), NA_character_)
   )
 
-print(p)
+# sensible label positions (top-right inside each facet)
+label_pos <- plot_data %>%
+  group_by(Variable) %>%
+  summarise(x_pos = max(Value, na.rm = TRUE),
+            y_max = max(logFC_DC3000, na.rm = TRUE),
+            y_min = min(logFC_DC3000, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(y_span = y_max - y_min,
+         y_pos_main = ifelse(y_span>0, y_max - 0.02*y_span, y_max),
+         y_pos_R = ifelse(y_span>0, y_max - 0.06*y_span, y_max - 0.03))
+
+labels_df <- labels_df %>% left_join(label_pos, by = "Variable") %>% filter(!is.na(x_pos))
+
+# ---------- 8) Plot (R in red) ----------
+p1 <- ggplot(plot_data, aes(x = Value, y = logFC_DC3000)) +
+  geom_point(size = 1.0, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.4, linetype = "dashed", color = "black") +
+  facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
+  labs(x = NULL, y = expression(log[2] * "FC in DC3000"),
+       title = "Predictors vs log2 FC in DC3000") +
+  theme_minimal(base_size = 10) +
+  theme(strip.background = element_blank(), strip.text = element_text(face = "bold"),
+        panel.grid = element_blank(), axis.line = element_line(linewidth = 0.3),
+        axis.ticks = element_line(linewidth = 0.3))
+
+# add labels: main (black) and R (red)
+if (nrow(labels_df) > 0) {
+  p1 <- p1 +
+    geom_text(data = labels_df, aes(x = x_pos, y = y_pos_main, label = label_main),
+              hjust = 1, vjust = 1, size = 3.0, color = "black", inherit.aes = FALSE) +
+    geom_text(data = labels_df %>% filter(!is.na(label_R)), aes(x = x_pos, y = y_pos_R, label = label_R),
+              hjust = 1, vjust = 1, size = 3.0, color = "red", inherit.aes = FALSE)
+}
+
+print(p1)
+
+
+
+
+
+
+
+
+
+
+
 ########## STOPPED HERE ON 12/15
 
 outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000"
 if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot = p, width = 9, height = 8)
+ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot = p1, width = 9, height = 8)
 
 
 ##################
@@ -397,8 +448,8 @@ sig_fit <- fit_exp %>%
 cat("Number of DC3000-significant genes found in fit_exp:", nrow(sig_fit), "\n")
 
 # Quick table of missingness
-sapply(sig_fit[,c("logFC_DC3000_col0","logFC_P25c2_col0","perc_div_aa",
-                  "Num_gene_events","Genetic_Diversity","Col.0_Pto","KB_Pto","Time.in.tree","interaction")],
+sapply(sig_fit[,c("logFC_DC3000","logFC_P25c2","perc_div_aa.x",
+                  "Num_gene_events","Genetic_Diversity","Col.0_Pto","Time.in.tree")],
        function(x) sum(is.na(x)))
 
 # -------------------------
@@ -406,112 +457,112 @@ sapply(sig_fit[,c("logFC_DC3000_col0","logFC_P25c2_col0","perc_div_aa",
 #    Predicting p25.c2 effect from your candidate predictors
 # -------------------------
 lm_p25 <- lm(data = sig_fit, logFC_P25c2 ~
-               perc_div_aa + Num_gene_events + Genetic_Diversity +
-               Col.0_Pto + KB_Pto + Time.in.tree + interaction + logFC_DC3000)
+               perc_div_aa.x + Num_gene_events + Genetic_Diversity +
+               Col.0_Pto + KB_Pto + Time.in.tree  + logFC_DC3000)
 summary(lm_p25)
 anova_p25 <- car::Anova(lm_p25, type = 3)
 print(anova_p25)
 
 
-#############################################
-# FACET PLOT OF ALL PREDICTORS vs RESPONSE for the SNPs that are significant in DC3000
-# (fixed: no ambiguous unname() call; robust to all-NA groups)
-#############################################
-
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(purrr)
-
-### Choose dataset:
-# df_to_plot <- fit_exp_clean        # full dataset
-df_to_plot <- sig_fit               # DC3000-significant genes
-
-### Choose response variable ("logFC_DC3000_col0" or "logFC_P25c2_col0")
-response <- "logFC_DC3000_col0"
-
-predictors <- c(
-  "perc_div_aa",
-  "Num_gene_events",
-  "Genetic_Diversity",
-  "Col.0_Pto",
-  "KB_Pto",
-  "Time.in.tree",
-  "interaction",
-  "logFC_P25c2_col0"
-)
-
-# Keep only available predictors
-predictors <- predictors[predictors %in% names(df_to_plot)]
-
-# Build long-format data for plotting
-plot_df <- df_to_plot %>%
-  dplyr::select(all_of(c(response, predictors))) %>%
-  filter(!is.na(.data[[response]])) %>%
-  pivot_longer(cols = all_of(predictors),
-               names_to = "Variable",
-               values_to = "Value")
-
-# Compute per-variable Pearson correlations (robust)
-corr_labels <- plot_df %>%
-  group_by(Variable) %>%
-  summarize(
-    n = sum(!is.na(Value) & !is.na(.data[[response]])),
-    ct = list(if (n >= 3) {
-      tryCatch(cor.test(Value, .data[[response]], use = "complete.obs"),
-               error = function(e) NULL)
-    } else NULL),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    R = map_dbl(ct, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)),
-    p = map_dbl(ct, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),
-    label = map2_chr(R, p, ~ if (is.na(.x)) "n<3" else paste0("R = ", formatC(.x, 2, format = "f"), "\np = ", signif(.y, 2)))
-  )
-
-# Position labels in upper-right of each facet (robust to all-NA)
-positions <- plot_df %>%
-  group_by(Variable) %>%
-  summarize(
-    x = if (all(is.na(Value))) NA_real_ else max(Value, na.rm = TRUE),
-    y = if (all(is.na(.data[[response]]))) NA_real_ else max(.data[[response]], na.rm = TRUE),
-    .groups = "drop"
-  )
-
-corr_labels <- left_join(corr_labels, positions, by = "Variable")
-
-# If position is NA (all NA), set a fallback (so geom_text doesn't error)
-corr_labels <- corr_labels %>%
-  mutate(
-    x = ifelse(is.na(x), 0, x),
-    y = ifelse(is.na(y), 0, y)
-  )
-
-# ---- Final Faceted Plot ----
-p_all <- ggplot(plot_df, aes(Value, .data[[response]])) +
-  geom_point(alpha = 0.75, size = 1) +
-  geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.4) +
-  facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
-  geom_text(data = corr_labels,
-            aes(x = x, y = y, label = label),
-            hjust = 1.05, vjust = 1.1, size = 3.1, na.rm = TRUE) +
-  labs(
-    x = NULL,
-    y = response,
-    title = paste("Predictors vs", response)
-  ) +
-  theme_minimal(base_size = 11) +
-  theme(
-    panel.grid = element_blank(),
-    strip.text = element_text(face = "bold"),
-    axis.line = element_line(color = "black", linewidth = 0.3)
-  )
-
-print(p_all)
-
-# Save to file
-ggsave("ALL_predictors_vs_response_facet_plot_fixed.pdf",
-       plot = p_all, width = 9, height = 8)
+# #############################################
+# # FACET PLOT OF ALL PREDICTORS vs RESPONSE for the SNPs that are significant in DC3000
+# # (fixed: no ambiguous unname() call; robust to all-NA groups)
+# #############################################
+# 
+# library(dplyr)
+# library(tidyr)
+# library(ggplot2)
+# library(purrr)
+# 
+# ### Choose dataset:
+# # df_to_plot <- fit_exp_clean        # full dataset
+# df_to_plot <- sig_fit               # DC3000-significant genes
+# 
+# ### Choose response variable ("logFC_DC3000_col0" or "logFC_P25c2_col0")
+# response <- "logFC_DC3000"
+# 
+# predictors <- c(
+#   "perc_div_aa",
+#   "Num_gene_events",
+#   "Genetic_Diversity",
+#   "Col.0_Pto",
+#   "KB_Pto",
+#   "Time.in.tree",
+#   "interaction",
+#   "logFC_P25c2_col0"
+# )
+# 
+# # Keep only available predictors
+# predictors <- predictors[predictors %in% names(df_to_plot)]
+# 
+# # Build long-format data for plotting
+# plot_df <- df_to_plot %>%
+#   dplyr::select(all_of(c(response, predictors))) %>%
+#   filter(!is.na(.data[[response]])) %>%
+#   pivot_longer(cols = all_of(predictors),
+#                names_to = "Variable",
+#                values_to = "Value")
+# 
+# # Compute per-variable Pearson correlations (robust)
+# corr_labels <- plot_df %>%
+#   group_by(Variable) %>%
+#   summarize(
+#     n = sum(!is.na(Value) & !is.na(.data[[response]])),
+#     ct = list(if (n >= 3) {
+#       tryCatch(cor.test(Value, .data[[response]], use = "complete.obs"),
+#                error = function(e) NULL)
+#     } else NULL),
+#     .groups = "drop"
+#   ) %>%
+#   mutate(
+#     R = map_dbl(ct, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)),
+#     p = map_dbl(ct, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),
+#     label = map2_chr(R, p, ~ if (is.na(.x)) "n<3" else paste0("R = ", formatC(.x, 2, format = "f"), "\np = ", signif(.y, 2)))
+#   )
+# 
+# # Position labels in upper-right of each facet (robust to all-NA)
+# positions <- plot_df %>%
+#   group_by(Variable) %>%
+#   summarize(
+#     x = if (all(is.na(Value))) NA_real_ else max(Value, na.rm = TRUE),
+#     y = if (all(is.na(.data[[response]]))) NA_real_ else max(.data[[response]], na.rm = TRUE),
+#     .groups = "drop"
+#   )
+# 
+# corr_labels <- left_join(corr_labels, positions, by = "Variable")
+# 
+# # If position is NA (all NA), set a fallback (so geom_text doesn't error)
+# corr_labels <- corr_labels %>%
+#   mutate(
+#     x = ifelse(is.na(x), 0, x),
+#     y = ifelse(is.na(y), 0, y)
+#   )
+# 
+# # ---- Final Faceted Plot ----
+# p_all <- ggplot(plot_df, aes(Value, .data[[response]])) +
+#   geom_point(alpha = 0.75, size = 1) +
+#   geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.4) +
+#   facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
+#   geom_text(data = corr_labels,
+#             aes(x = x, y = y, label = label),
+#             hjust = 1.05, vjust = 1.1, size = 3.1, na.rm = TRUE) +
+#   labs(
+#     x = NULL,
+#     y = response,
+#     title = paste("Predictors vs", response)
+#   ) +
+#   theme_minimal(base_size = 11) +
+#   theme(
+#     panel.grid = element_blank(),
+#     strip.text = element_text(face = "bold"),
+#     axis.line = element_line(color = "black", linewidth = 0.3)
+#   )
+# 
+# print(p_all)
+# 
+# # Save to file
+# ggsave("ALL_predictors_vs_response_facet_plot_fixed.pdf",
+#        plot = p_all, width = 9, height = 8)
 
 
 #Function that returns a sentence describing variance explained
@@ -533,7 +584,7 @@ variance_sentence <- function(model, response_name, predictor_name) {
 # 1. Variance explained in P25.c2 by DC3000
 ############################################################
 
-model_p25_by_dc <- lm(logFC_P25c2 ~ logFC_DC3000, data = fit_exp_clean)
+model_p25_by_dc <- lm(logFC_P25c2 ~ logFC_DC3000, data = fit_exp_clean2)
 
 sentence_p25 <- variance_sentence(
   model_p25_by_dc,
@@ -543,32 +594,32 @@ sentence_p25 <- variance_sentence(
 
 cat(sentence_p25, "\n\n")
 
-############################################################
-# 2. Variance explained between Col-0 and Ey15 in DC3000
-############################################################
-# Update column names here if different:
-col0_col <- "logFC_DC3000"
-ey15_col <- "logFC_DC3000"
-
-model_ey15_by_col0 <- lm(fit_exp_clean[[ey15_col]] ~ fit_exp_clean[[col0_col]])
-model_col0_by_ey15 <- lm(fit_exp_clean[[col0_col]] ~ fit_exp_clean[[ey15_col]])
-
-sentence_ey15 <- variance_sentence(
-  model_ey15_by_col0,
-  response_name = "logFC_DC3000_Ey15",
-  predictor_name = "logFC_DC3000_Col0"
-)
-
-sentence_col0 <- variance_sentence(
-  model_col0_by_ey15,
-  response_name = "logFC_DC3000_Col0",
-  predictor_name = "logFC_DC3000_Ey15"
-)
-
-cat(sentence_ey15, "\n")
-cat(sentence_col0, "\n")
-
-
+# ############################################################
+# # 2. Variance explained between Col-0 and Ey15 in DC3000
+# ############################################################
+# # Update column names here if different:
+# col0_col <- "logFC_DC3000"
+# ey15_col <- "logFC_DC3000"
+# 
+# model_ey15_by_col0 <- lm(fit_exp_clean2[[ey15_col]] ~ fit_exp_clean2[[col0_col]])
+# model_col0_by_ey15 <- lm(fit_exp_clean2[[col0_col]] ~ fit_exp_clean2[[ey15_col]])
+# 
+# sentence_ey15 <- variance_sentence(
+#   model_ey15_by_col0,
+#   response_name = "logFC_DC3000_Ey15",
+#   predictor_name = "logFC_DC3000"
+# )
+# 
+# sentence_col0 <- variance_sentence(
+#   model_col0_by_ey15,
+#   response_name = "logFC_DC3000_Col0",
+#   predictor_name = "logFC_DC3000_Ey15"
+# )
+# 
+# cat(sentence_ey15, "\n")
+# cat(sentence_col0, "\n")
+# 
+# 
 
 ############################################################
 # 3. Make a graph of how the local Pearson changes with the FC of DC3000
@@ -592,14 +643,14 @@ z_alpha       <- 1.96 # 95% CI ~ 1.96 * se
 # --- select dataset (prefers sig_fit) ---
 if (exists("sig_fit")) {
   df <- sig_fit
-} else if (exists("fit_exp_clean")) {
-  df <- fit_exp_clean
+} else if (exists("fit_exp_clean2")) {
+  df <- fit_exp_clean2
 } else if (exists("fit_exp")) {
   df <- fit_exp
 } else stop("No dataset found: define 'sig_fit' or 'fit_exp_clean' or 'fit_exp'")
 
 # required columns
-req <- c("logFC_DC3000_col0", "logFC_P25c2_col0")
+req <- c("logFC_DC3000", "logFC_P25c2")
 miss <- setdiff(req, names(df))
 if (length(miss) > 0) stop("Missing required columns: ", paste(miss, collapse = ", "))
 
@@ -609,8 +660,8 @@ df2 <- df %>% dplyr::select(all_of(req)) %>% na.omit()
 if (nrow(df2) < 30) warning("Fewer than 30 complete points — interpret results with caution.")
 
 # define DC3000 grid
-dc_vals <- seq(min(df2$logFC_DC3000_col0, na.rm = TRUE),
-               max(df2$logFC_DC3000_col0, na.rm = TRUE),
+dc_vals <- seq(min(df2$logFC_DC3000, na.rm = TRUE),
+               max(df2$logFC_DC3000, na.rm = TRUE),
                length.out = n_grid)
 
 # storage
@@ -622,13 +673,13 @@ local_n     <- rep(0L, n_grid)
 # compute local stats using sliding window
 for (i in seq_along(dc_vals)) {
   x0 <- dc_vals[i]
-  window <- df2 %>% filter(abs(logFC_DC3000_col0 - x0) <= window_width)
+  window <- df2 %>% filter(abs(logFC_DC3000 - x0) <= window_width)
   local_n[i] <- nrow(window)
   if (nrow(window) >= min_points) {
-    m <- lm(logFC_P25c2_col0 ~ logFC_DC3000_col0, data = window)
+    m <- lm(logFC_P25c2 ~ logFC_DC3000, data = window)
     local_R2[i]    <- summary(m)$r.squared
     local_slope[i] <- coef(m)[2]
-    local_r[i]     <- suppressWarnings(cor(window$logFC_DC3000_col0, window$logFC_P25c2_col0))
+    local_r[i]     <- suppressWarnings(cor(window$logFC_DC3000, window$logFC_P25c2))
   } else {
     local_R2[i] <- NA_real_
     local_slope[i] <- NA_real_
