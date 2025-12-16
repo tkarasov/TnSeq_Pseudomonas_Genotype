@@ -40,7 +40,11 @@ setwd("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive
 ##########################################################################
 
 ######### Actually I pulled in the lfc datatable from limmaVoom
-lfc_df <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFCDC3000logFCp25c2_10_2025.csv")
+#lfc_df <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/logFCDC3000logFCp25c2_10_2025.csv")
+
+# On 12/15/2025 I replace the lfc_df file with sig_results_12_2025.csv
+sig_results <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/sig_results_12_2025.csv",header=TRUE)
+
 
 #this is the output from running the python evolutionary genetics scripts on the panX output
 conservation = read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/output_data/pan_genome/full_tag_pd.csv", row.names = 1)
@@ -51,7 +55,7 @@ blast_div <- blast_div[,c("V1", "V2", "V11")]
 colnames(blast_div) <- c("DAK","WP", "perc_div_aa")
 rownames(blast_div) <- blast_div$WP
 
-#I need to rename the gene names in conservation file
+#I need to rename the gene names in conservation file. They currently have the DAK naming but need the BJE naming.
 orthologs <- read.csv("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", 
    header = TRUE, sep = ",", row.names = 2)
 
@@ -86,64 +90,91 @@ for(rowname in rownames(conservation2)){
   i=i+1
 }
 
+# What is the output for the estimated LFC of P25.C2 and DC3000.
 # Now combine the diversity and tnseq files
+lfc_df <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000logFC_time_DC3000_vs_P25c2_12_2025.csv", header=TRUE)
 rownames(lfc_df) <- lfc_df$gene
 fit_con <- merge(conservation2, lfc_df, by=0, all=TRUE)
 rownames(fit_con) <- fit_con$Row.names
+fit_con$gene <- rownames(fit_con)
+blast_div$gene <- rownames(blast_div)
+# remove if present
+if ("Row.names" %in% names(fit_con)) fit_con$Row.names <- NULL
+
+# now safe to merge
+merged <- merge(fit_con, blast_div, by = "gene", all = TRUE)
+
+# sanity check
+any(duplicated(names(merged)))   # should be FALSE
+fit_con <- merge(fit_con, blast_div, by = "gene")
+
 fit_con <- merge(fit_con, blast_div, by=0, all=TRUE)
 # There are ~6 genes in blast_div not in fit_con before merge
 
 # now we can ask how the time in tree relates to the fitness effect
-model1 <- lm(data=fit_con, logFC_DC3000_col0 ~ Time.in.tree + Genetic_Diversity + Num_gene_events)
+model1 <- lm(data=fit_con, logFC_DC3000 ~ Time.in.tree + Genetic_Diversity + Num_gene_events)
 names(fit_con) <- make.unique(names(fit_con), sep = "__dup")
 #############
 
 # 1. Compute correlation in each bin
 df <- fit_con %>%
-  mutate(div_bin = cut(perc_div_aa, breaks = seq(50, 100, by = 5), include.lowest = TRUE))
+  mutate(div_bin = cut(perc_div_aa.x, breaks = seq(50, 100, by = 5), include.lowest = TRUE))
 df <- df %>%
   mutate(div_bin = as.character(div_bin))
 cor_by_bin <- df %>%
   filter(!is.na(div_bin)) %>%          # <--- drop NA bin
   group_by(div_bin) %>%
   summarise(
-    cor_val = cor(logFC_DC3000_col0,
-                  logFC_P25c2_col0,
+    cor_val = cor(logFC_DC3000,
+                  logFC_P25c2,
                   use = "complete.obs"),
     .groups = "drop"
   )
 # 2: Convert bin labels (e.g., "[60,65)") into numeric midpoints
+library(dplyr)
+library(tidyr)
+
 cor_by_bin2 <- df %>%
   filter(!is.na(div_bin)) %>%
   group_by(div_bin) %>%
   summarise(
-    n_pairs = sum(!is.na(logFC_DC3000_col0) &
-                    !is.na(logFC_P25c2_col0)),
-    cor_val = ifelse(
-      n_pairs >= 2,
-      cor(logFC_DC3000_col0, logFC_P25c2_col0, use = "complete.obs"),
-      NA_real_
-    ),
+    n_pairs = as.numeric(sum(!is.na(logFC_DC3000) & !is.na(logFC_P25c2))),
+    cor_val = ifelse(n_pairs >= 2,
+                     cor(logFC_DC3000, logFC_P25c2, use = "complete.obs"),
+                     NA_real_),
     .groups = "drop"
   ) %>%
-  # --- Fisher CI only if n >= 10 (recommended threshold) ---
   mutate(
-    z      = ifelse(n_pairs >= 10, atanh(cor_val), NA_real_),
-    se_z   = ifelse(n_pairs >= 10, 1 / sqrt(n_pairs - 3), NA_real_),
-    z_low  = ifelse(is.finite(se_z), z - 1.96 * se_z, NA_real_),
-    z_high = ifelse(is.finite(se_z), z + 1.96 * se_z, NA_real_),
-    cor_low  = tanh(z_low),
-    cor_high = tanh(z_high)
+    # Fisher z only where we have enough pairs
+    z = ifelse(n_pairs >= 10, atanh(cor_val), NA_real_)
+  ) %>%
+  # --- safe vectorized computation of se_z: no sqrt() on bad values ---
+  { tmp <- .
+  tmp$se_z <- NA_real_                    # initialize
+  good_idx <- which(!is.na(tmp$n_pairs) & tmp$n_pairs >= 10 & (tmp$n_pairs - 3) > 0)
+  if (length(good_idx) > 0) {
+    tmp$se_z[good_idx] <- 1 / sqrt(tmp$n_pairs[good_idx] - 3)
+  }
+  tmp
+  } %>%
+  mutate(
+    z_low  = ifelse(!is.na(se_z), z - 1.96 * se_z, NA_real_),
+    z_high = ifelse(!is.na(se_z), z + 1.96 * se_z, NA_real_),
+    cor_low  = ifelse(!is.na(z_low), tanh(z_low), NA_real_),
+    cor_high = ifelse(!is.na(z_high), tanh(z_high), NA_real_)
   ) %>%
   mutate(
     div_range = gsub("\\[|\\(|\\)|\\]|\\s", "", div_bin)
   ) %>%
-  separate(
-    div_range, into = c("lower", "upper"),
-    sep = ",", convert = TRUE
-  ) %>%
+  separate(div_range, into = c("lower", "upper"), sep = ",", convert = TRUE) %>%
   mutate(div_mid = (lower + upper) / 2) %>%
   select(div_bin, div_mid, n_pairs, cor_val, cor_low, cor_high)
+
+# Inspect
+cor_by_bin2
+str(cor_by_bin2)
+
+
 
 # 3. Plot
 div_pear <- ggplot(cor_by_bin2, aes(x = div_mid, y = cor_val)) +
@@ -194,7 +225,7 @@ fit_exp <- merge(fit_con, exp_sub, by.x="WP.x", by.y="WP", all.x = TRUE)
 #hm <- merge(fit_exp, lfc_both_df, by.x= "WP", by.y = "Gene")
 #fit_exp <- hm
 
-model2 <- lm(data=fit_exp,  logFC_DC3000_col0 ~ logFC_P25c2_col0 +Time.in.tree + KB_Pto +Genetic_Diversity + Col.0_Pto + Num_gene_events )
+model2 <- lm(data=fit_exp,  logFC_DC3000 ~ logFC_P25c2 +Time.in.tree + KB_Pto +Genetic_Diversity + Col.0_Pto + Num_gene_events )
 summary(model2)
 anova_table <-Anova(model2, type=3)
 anova_table$Term <- rownames(anova_table)
@@ -223,8 +254,8 @@ vars <- c("logFC_P25C2", "logFC_DC3000", "perc_div_aa",
 #   dplyr::select(all_of(vars)) %>%
 #   mutate(div_x_dc3000 = perc_div_aa * logFC_DC3000) %>%
 #   na.omit()
-fit_exp$scaled_div <- scale(fit_exp$perc_div_aa)
-fit_exp$scaled_logFC <- scale(fit_exp$logFC_DC3000_col0)
+fit_exp$scaled_div <- scale(fit_exp$perc_div_aa.x)
+fit_exp$scaled_logFC <- scale(fit_exp$logFC_DC3000)
 fit_exp$interaction <- fit_exp$scaled_div * fit_exp$scaled_logFC
 fit_exp_clean <- fit_exp %>% 
   na.omit()
@@ -236,29 +267,24 @@ library(tidyr)
 library(ggplot2)
 library(purrr)
 
-# Clean, fixed, end-to-end plotting block
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(purrr)
 
 # --- Ensure required columns exist; create numeric interaction if missing ---
 if (!"interaction" %in% names(fit_exp_clean)) {
   if (all(c("logFC_P25c2_col0", "perc_div_aa") %in% names(fit_exp_clean))) {
     fit_exp_clean <- fit_exp_clean %>%
-      mutate(interaction = logFC_P25c2_col0 * perc_div_aa)
+      mutate(interaction = logFC_P25c2 * perc_div_aa)
   } else {
     stop("Neither 'interaction' column exists nor the necessary columns to create it (logFC_P25c2_col0, perc_div_aa) are present.")
   }
 }
 
 # --- Define predictor variables (as you provided) ---
-predictor_vars <- c("perc_div_aa", "Num_gene_events", "Genetic_Diversity",
-                    "Col.0_Pto", "KB_Pto", "interaction",
-                    "logFC_P25c2_col0", "Time.in.tree")
-
+predictor_vars <- c("perc_div_aa.x", "Num_gene_events", "Genetic_Diversity",
+                    "Col.0_Pto", 
+                    "logFC_P25c2", "Time.in.tree")
+#"interaction", "KB_Pto", 
 # --- Prepare long-format plotting data (drop rows lacking the selected columns) ---
-needed_cols <- unique(c("logFC_DC3000_col0", predictor_vars))
+needed_cols <- unique(c("logFC_DC3000", predictor_vars))
 missing_cols <- setdiff(needed_cols, names(fit_exp_clean))
 if (length(missing_cols) > 0) {
   stop("Missing required columns in fit_exp_clean: ", paste(missing_cols, collapse = ", "))
@@ -267,8 +293,8 @@ if (length(missing_cols) > 0) {
 plot_data <- fit_exp_clean %>%
   dplyr::select(all_of(needed_cols)) %>%
   # keep rows that have at least the response present (we'll let cor.test handle cases per variable)
-  filter(!is.na(logFC_DC3000_col0)) %>%
-  pivot_longer(cols = -logFC_DC3000_col0,
+  filter(!is.na(logFC_DC3000)) %>%
+  pivot_longer(cols = -logFC_DC3000,
                names_to = "Variable",
                values_to = "Value")
 
@@ -276,9 +302,9 @@ plot_data <- fit_exp_clean %>%
 labels_df <- plot_data %>%
   group_by(Variable) %>%
   summarize(
-    n_obs = sum(!is.na(Value) & !is.na(logFC_DC3000_col0)),
+    n_obs = sum(!is.na(Value) & !is.na(logFC_DC3000)),
     cor_test = list(if (n_obs >= 3) {
-      tryCatch(cor.test(Value, logFC_DC3000_col0, use = "complete.obs"),
+      tryCatch(cor.test(Value, logFC_DC3000, use = "complete.obs"),
                error = function(e) NULL)
     } else NULL),.groups = "drop") %>% mutate(R = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$estimate)), p = map_dbl(cor_test, ~ if (is.null(.x)) NA_real_ else as.numeric(.x$p.value)),label = map2_chr(R, p, ~ {
       if (is.na(.x)) {
@@ -295,8 +321,8 @@ pos_df <- plot_data %>%
   summarize(
     x_max = if (all(is.na(Value))) NA_real_ else max(Value, na.rm = TRUE),
     x_min = if (all(is.na(Value))) NA_real_ else min(Value, na.rm = TRUE),
-    y_max = if (all(is.na(logFC_DC3000_col0))) NA_real_ else max(logFC_DC3000_col0, na.rm = TRUE),
-    y_min = if (all(is.na(logFC_DC3000_col0))) NA_real_ else min(logFC_DC3000_col0, na.rm = TRUE),
+    y_max = if (all(is.na(logFC_DC3000))) NA_real_ else max(logFC_DC3000, na.rm = TRUE),
+    y_min = if (all(is.na(logFC_DC3000))) NA_real_ else min(logFC_DC3000, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(
@@ -319,7 +345,7 @@ pos_df <- plot_data %>%
 labels_df <- labels_df %>% left_join(pos_df, by = "Variable")
 
 # --- Build and display the faceted plot ---
-p <- ggplot(plot_data, aes(x = Value, y = logFC_DC3000_col0)) +
+p <- ggplot(plot_data, aes(x = Value, y = logFC_DC3000)) +
   geom_point(size = 1.2, alpha = 0.8) +
   geom_smooth(method = "lm", se = FALSE, linewidth = 0.4, linetype = "dashed", color = "black") +
   facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
@@ -344,9 +370,9 @@ p <- ggplot(plot_data, aes(x = Value, y = logFC_DC3000_col0)) +
   )
 
 print(p)
+########## STOPPED HERE ON 12/15
 
-
-outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/plots"
+outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000"
 if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot = p, width = 9, height = 8)
 
@@ -358,12 +384,15 @@ ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot =
 lfc_dcsig <- lfc_df %>% dplyr::filter(Significant=="Yes")
 
 
+
+
+
 # 2) Subset fit_exp to genes that are DC3000-significant.
 #    In your merges, gene identifier in fit_exp is in column "WP.x" (from earlier merge).
 sig_fit <- fit_exp %>%
   filter(!is.na(WP.x) & WP.x %in% lfc_dcsig$gene) %>% 
   # keep only rows with at least one response present
-  filter(!is.na(logFC_DC3000_col0) | !is.na(logFC_P25c2_col0))
+  filter(!is.na(logFC_DC3000) | !is.na(logFC_P25c2))
 
 cat("Number of DC3000-significant genes found in fit_exp:", nrow(sig_fit), "\n")
 
@@ -376,9 +405,9 @@ sapply(sig_fit[,c("logFC_DC3000_col0","logFC_P25c2_col0","perc_div_aa",
 # A. Linear model (within DC3000-significant genes)
 #    Predicting p25.c2 effect from your candidate predictors
 # -------------------------
-lm_p25 <- lm(data = sig_fit, logFC_P25c2_col0 ~
+lm_p25 <- lm(data = sig_fit, logFC_P25c2 ~
                perc_div_aa + Num_gene_events + Genetic_Diversity +
-               Col.0_Pto + KB_Pto + Time.in.tree + interaction + logFC_DC3000_col0)
+               Col.0_Pto + KB_Pto + Time.in.tree + interaction + logFC_DC3000)
 summary(lm_p25)
 anova_p25 <- car::Anova(lm_p25, type = 3)
 print(anova_p25)
@@ -504,7 +533,7 @@ variance_sentence <- function(model, response_name, predictor_name) {
 # 1. Variance explained in P25.c2 by DC3000
 ############################################################
 
-model_p25_by_dc <- lm(logFC_P25c2_col0 ~ logFC_DC3000_col0, data = fit_exp_clean)
+model_p25_by_dc <- lm(logFC_P25c2 ~ logFC_DC3000, data = fit_exp_clean)
 
 sentence_p25 <- variance_sentence(
   model_p25_by_dc,
@@ -518,8 +547,8 @@ cat(sentence_p25, "\n\n")
 # 2. Variance explained between Col-0 and Ey15 in DC3000
 ############################################################
 # Update column names here if different:
-col0_col <- "logFC_DC3000_col0"
-ey15_col <- "logFC_DC3000_ey15"
+col0_col <- "logFC_DC3000"
+ey15_col <- "logFC_DC3000"
 
 model_ey15_by_col0 <- lm(fit_exp_clean[[ey15_col]] ~ fit_exp_clean[[col0_col]])
 model_col0_by_ey15 <- lm(fit_exp_clean[[col0_col]] ~ fit_exp_clean[[ey15_col]])

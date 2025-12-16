@@ -352,11 +352,11 @@ p_top_strain <- plot_gene_set(sum_strain, tidy_strain, "Top 10 genes: strain-spe
 outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/"
 if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
-pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/top10_time_specific_genes_voom_log2CPM.pdf", width = 12, height = 8)
+pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/top10_time_specific_genes_voom_log2CPM.pdf", width = 7)
 print(p_top_time)
 dev.off()
 
-pdf( "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/top10_strain_time_interaction_genes_voom_log2CPM.pdf", width = 12, height = 8)
+pdf( "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/top10_strain_time_interaction_genes_voom_log2CPM.pdf", width = 4.5)
 print(p_top_strain)
 dev.off()
 
@@ -364,8 +364,11 @@ dev.off()
 combined <- plot_grid(p_top_time + theme(legend.position = "bottom"),
                       p_top_strain + theme(legend.position = "bottom"),
                       ncol = 1, labels = c("A","B"), rel_heights = c(1,1))
-pdf( "top10_time_vs_strain_time_combined.pdf", width = 12, height = 16)
-print(combined)
+# set theme to use a font the pdf device supports
+# force global theme/family to Helvetica
+theme_set(theme_classic(base_size = 11, base_family = "Helvetica"))
+pdf( "top10_time_vs_strain_time_combined.pdf", width = 7, family = "Helvetica")
+combined
 dev.off()
 
 message("Plots written to: ", outdir)
@@ -382,6 +385,9 @@ df_time <- data.frame(
   logFC_P25c2 = fit2$coefficients[, "time_pointt3"] +
     fit2$coefficients[, "treatmentp25c2:time_pointt3"]
 )
+# Write df_time to file
+write.table(df_time, "", sep=",", quote= FALSE )
+
 
 # Plot logFC  DC3000 in Eyach vs Col-0
 df_plant <- data.frame(
@@ -435,12 +441,12 @@ plant_genot_plot <- ggplot(df_plant, aes(x = logFC_DC3000_col0, y = logFC_DC3000
     y = "DC3000 in Eyach logFC (T3–T0)"
   )
 
-pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/correspondence_Strain_Plant.pdf")
-plot_grid(strain_plot, plant_genot_plot)
+pdf("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/correspondence_Strain_Plant.pdf", width= 3.75, height= 5.5)
+plot_grid(strain_plot, plant_genot_plot, nrow = 2, labels = c("C", "D"))
 dev.off()
 
 # So now we have a data table result_df that we can use to look at the breakdown in significance
-write.table(result_df, file.path(outdir, "sig_results_11_2025.csv"), sep=",", quote= FALSE )
+write.table(result_df, file.path(outdir, "sig_results_12_2025.csv"), sep=",", quote= FALSE )
 
 # I want to make a stacked barplot for the genes associated with strain specific background vs other variables
 # I want a stacked barpolot using the result_df dataframe, with three bars -- one for Strain, one for Plant and one Gene-by-Gene. In each column I want to ask whether all of the time-specific genes in DC3000 which fraction show a strain effect, which fraction show a Plant genotype effect and which show a strainxplant effect
