@@ -806,4 +806,322 @@ ggsave("local_correlation_moderately_smoothed_CI.pdf", p_r, width = 7, height = 
 print(p_r)
 
 cat("Saved:\n - local_R2_moderately_smoothed_CI.pdf\n - local_slope_moderately_smoothed_CI.pdf\n - local_correlation_moderately_smoothed_CI.pdf\n")
+############################################################
+# I think that previous section may be useless. This next section uses a GAM-predicted effect modeling.
+# Full GAM + derivative pipeline (robust to gratia output column names)
+# Uses data frame `fit_exp`
+# Predictor: logFC_DC3000 (effect_A)
+# Response:  logFC_P25c2 (response_B)
+# Covariates: perc_div_aa.x, Num_gene_events, Genetic_Diversity, Col.0_Pto, Time.in.tree
 
+# Combined: GAM predicted curve + parallel bootstrap local R^2 (Option B)
+# Assumes `fit_exp` exists and has required columns.
+# Packages
+# install.packages(c("mgcv","ggplot2","dplyr","parallel"))
+library(mgcv)
+library(ggplot2)
+library(dplyr)
+library(parallel)
+
+# ---------- 0) Sanity checks & data prep ----------
+stopifnot(exists("fit_exp"))
+req_cols <- c("logFC_DC3000","logFC_P25c2","perc_div_aa.x",
+              "Num_gene_events","Genetic_Diversity","Col.0_Pto","Time.in.tree")
+stopifnot(all(req_cols %in% names(fit_exp)))
+
+# Subset + drop NA and rename
+df <- fit_exp %>%
+  dplyr::select(all_of(req_cols)) %>%
+  na.omit() %>%
+  rename(effect_A = logFC_DC3000,
+         response_B = logFC_P25c2) %>%
+  mutate(effect_A_pos = pmax(effect_A, 0),
+         effect_A_neg = -pmin(effect_A, 0))
+
+# Convert Col.0_Pto to factor if it appears categorical
+if(!is.factor(df$Col.0_Pto)) {
+  if(length(unique(df$Col.0_Pto)) <= 10) df$Col.0_Pto <- factor(df$Col.0_Pto)
+  else df$Col.0_Pto <- as.numeric(df$Col.0_Pto)
+}
+
+# ---------- 1) Fit the GAM (separate smooths for + and - sides) ----------
+fit_gam <- gam(
+  response_B ~ s(effect_A_pos, k = 10) + s(effect_A_neg, k = 10) +
+    perc_div_aa.x + Num_gene_events + Genetic_Diversity + Col.0_Pto + Time.in.tree,
+  data = df,
+  family = gaussian(),
+  method = "REML"
+)
+
+# quick diagnostics (print)
+print(summary(fit_gam))
+gam.check(fit_gam)
+
+# ---------- 2) Predicted curve plot ----------
+grid_n <- 400
+grid <- tibble(effect_A = seq(min(df$effect_A, na.rm = TRUE),
+                              max(df$effect_A, na.rm = TRUE),
+                              length.out = grid_n)) %>%
+  mutate(effect_A_pos = pmax(effect_A, 0),
+         effect_A_neg = -pmin(effect_A, 0))
+
+# set covariates to typical values
+grid$perc_div_aa.x   <- mean(df$perc_div_aa.x, na.rm = TRUE)
+grid$Num_gene_events <- mean(df$Num_gene_events, na.rm = TRUE)
+grid$Genetic_Diversity <- mean(df$Genetic_Diversity, na.rm = TRUE)
+grid$Time.in.tree <- mean(df$Time.in.tree, na.rm = TRUE)
+if(is.factor(df$Col.0_Pto)) {
+  grid$Col.0_Pto <- factor(names(which.max(table(df$Col.0_Pto))), levels = levels(df$Col.0_Pto))
+} else {
+  grid$Col.0_Pto <- mean(df$Col.0_Pto, na.rm = TRUE)
+}
+
+pred <- predict(fit_gam, newdata = grid, se.fit = TRUE, type = "response")
+grid <- grid %>% mutate(fit = pred$fit, se_fit = pred$se.fit,
+                        fit_upper = fit + 1.96 * se_fit, fit_lower = fit - 1.96 * se_fit)
+
+p_resp <- ggplot(grid, aes(x = effect_A, y = fit)) +
+  geom_ribbon(aes(ymin = fit_lower, ymax = fit_upper), alpha = 0.25) +
+  geom_line(size = 1.05) +
+  labs(x = "log2 Fold Change in DC3000 (logFC_DC3000)",
+       y = "Predicted log2 Fold Change in P25c2 (logFC_P25c2)",
+       title = "GAM prediction: response_B vs effect_A") +
+  theme_minimal()
+print(p_resp)
+
+# ---------- 3) Prepare for faster bootstraped local R^2 (Option B) ----------
+# We'll use rolling windows in terms of observation counts (nearest neighbors).
+df2 <- df %>% arrange(effect_A) %>% mutate(idx = row_number())
+# store model predictions per observation (used in R^2 calc)
+df2$pred <- predict(fit_gam, newdata = df2, type = "response")
+
+n_total <- nrow(df2)
+message("Total observations: ", n_total)
+
+# TUNABLE PARAMETERS (adjust for speed/precision)
+window_n <- min(120, max(10, floor(n_total/8)))  # number of observations per window (example default)
+step <- max(1, floor(window_n / 5))              # step in rows between reported centers (saves time)
+B <- 200                                         # bootstrap reps per window (reduce to 100 to speed up)
+cores <- max(1, detectCores() - 1)               # parallel workers
+
+message("window_n = ", window_n, "; step = ", step, "; B = ", B, "; cores = ", cores)
+
+# center indices for windows (avoid edges too-short)
+start_idx <- ceiling(window_n / 2)
+end_idx   <- n_total - floor(window_n / 2)
+if(end_idx < start_idx) {
+  stop("Dataset too small for the chosen window size. Reduce window_n.")
+}
+centers_idx <- seq(start_idx, end_idx, by = step)
+
+# ---------- helper: compute bootstrap local R2 for a given center index ----------
+bootstrap_center <- function(center_idx, df_local, window_n_local, B_local) {
+  lo <- center_idx - floor(window_n_local / 2)
+  hi <- center_idx + floor(window_n_local / 2)
+  sub <- df_local[lo:hi, , drop = FALSE]
+  n <- nrow(sub)
+  if(n < 8) return(data.frame(center = NA_real_, r2 = NA_real_, ci_low = NA_real_, ci_high = NA_real_, n = n))
+  y <- sub$response_B
+  p <- sub$pred
+  ss_res <- sum((y - p)^2); ss_tot <- sum((y - mean(y))^2)
+  r2_obs <- ifelse(ss_tot == 0, NA_real_, 1 - ss_res/ss_tot)
+  r2_boot <- numeric(B_local)
+  for(b in seq_len(B_local)) {
+    idx <- sample.int(n, n, replace = TRUE)
+    yb <- sub$response_B[idx]
+    pb <- sub$pred[idx]
+    ss_res_b <- sum((yb - pb)^2); ss_tot_b <- sum((yb - mean(yb))^2)
+    r2_boot[b] <- ifelse(ss_tot_b == 0, NA_real_, 1 - ss_res_b/ss_tot_b)
+  }
+  r2_boot <- r2_boot[!is.na(r2_boot)]
+  if(length(r2_boot) < 10) {
+    ci <- c(NA_real_, NA_real_)
+  } else {
+    ci <- quantile(r2_boot, probs = c(0.025, 0.975), names = FALSE)
+  }
+  center_effect <- sub$effect_A[floor(n/2) + 1 - ifelse(n %% 2 == 0, 0, 1)] # approximate center effect
+  data.frame(center = center_effect, r2 = r2_obs, ci_low = ci[1], ci_high = ci[2], n = n)
+}
+
+# ---------- 4) Run bootstrap in parallel ----------
+# Export minimal objects to cluster to avoid heavy copying
+cl <- makeCluster(cores)
+clusterExport(cl, varlist = c("df2","window_n","B","bootstrap_center"), envir = environment())
+clusterEvalQ(cl, library(dplyr))
+
+# run
+res_list <- parLapply(cl, centers_idx, function(ci) {
+  bootstrap_center(ci, df2, window_n, B)
+})
+stopCluster(cl)
+
+res_df <- bind_rows(res_list) %>% filter(!is.na(center))
+
+# Remove extreme NA rows if any
+res_df <- res_df %>% arrange(center)
+
+# ---------- 5) Plot local R^2 with bootstrap CI ----------
+p_localR2 <- ggplot(res_df, aes(x = center, y = r2)) +
+  geom_ribbon(aes(ymin = ci_low, ymax = ci_high), fill = "grey80", alpha = 0.8) +
+  geom_line(color = "black") +
+  geom_point(size = 0.9) +
+  labs(x = "log2 Fold Change in DC3000 (effect_A)",
+       y = expression(Local~R^2),
+       title = paste0("Local R^2 (window_n=", window_n, ", step=", step, ", B=", B, ")")) +
+  theme_minimal()
+print(p_localR2)
+
+# optional: plot sample size per window
+p_n <- ggplot(res_df, aes(x = center, y = n)) + geom_line() +
+  labs(x = "effect_A", y = "N in window", title = "Window sample size") + theme_minimal()
+print(p_n)
+
+# ---------- 6) Save results (optional) ----------
+# write.csv(res_df, "local_R2_results.csv", row.names = FALSE)
+
+message("Done. Adjust window_n, step or B to trade accuracy vs speed.")
+
+#############################################
+# Now I want variable importance for the GAM model  
+# Variable explanatory-power table + importance plot for GAM covariates
+# Requires: mgcv, dplyr, ggplot2, broom
+# Assumes df and fit_gam already exist (df contains response_B, effect_A, covariates)
+# install.packages(c("mgcv","dplyr","ggplot2","broom"))
+
+# Covariate importance including DC3000 logFC (effect_A)
+# Assumes df (with response_B, effect_A, covariates) and fit_gam exist
+# Packages required: mgcv, dplyr, ggplot2, broom
+# install.packages(c("mgcv","dplyr","ggplot2","broom"))
+
+library(mgcv)
+library(dplyr)
+library(ggplot2)
+library(broom)
+
+# ---------- sanity ----------
+stopifnot(exists("df"))
+stopifnot(exists("fit_gam"))
+
+# Define covariates to evaluate; include "effect_A" as a single item representing both smooths
+covars <- c("effect_A", "perc_div_aa.x","Num_gene_events","Genetic_Diversity","Col.0_Pto","Time.in.tree")
+
+# Full model info
+full <- fit_gam
+full_deviance <- deviance(full)
+full_aic <- AIC(full)
+full_preds <- predict(full, newdata = df, type = "response")
+full_rmse <- sqrt(mean((df$response_B - full_preds)^2))
+
+# Helper: remove terms from formula robustly
+# var can be:
+#  - "effect_A": remove both s(effect_A_pos) and s(effect_A_neg)
+#  - other covariate names: remove top-level terms that match the var name exactly
+remove_terms_for_var <- function(model, var) {
+  f <- formula(model)
+  terms_full <- attr(terms(f), "term.labels")
+  if(var == "effect_A") {
+    # terms to remove: any smooth or term containing effect_A_pos or effect_A_neg
+    to_remove <- terms_full[grepl("effect_A_pos|effect_A_neg|s\\(effect_A", terms_full)]
+  } else {
+    # remove exact matches of variable as a top-level term (word boundary)
+    to_remove <- terms_full[grepl(paste0("\\b", var, "\\b"), terms_full)]
+  }
+  # if nothing to remove, return NULL
+  if(length(to_remove) == 0) return(NULL)
+  to_keep <- setdiff(terms_full, to_remove)
+  # If smoothing terms remain but we removed everything (i.e., empty), keep intercept-only model
+  if(length(to_keep) == 0) {
+    # create intercept-only formula
+    as.formula(paste(as.character(f[[2]]), "~ 1"))
+  } else {
+    reformulate(to_keep, response = as.character(f[[2]]))
+  }
+}
+
+results <- list()
+
+for(v in covars) {
+  reduced_formula <- remove_terms_for_var(full, v)
+  if(is.null(reduced_formula)) {
+    warning("Variable '", v, "' not found as a top-level term (or special handling) in model; skipping.")
+    next
+  }
+  # Fit reduced model with same family and method
+  reduced <- gam(reduced_formula, data = df, family = family(full)$family, method = "REML")
+  
+  # Partial R2 based on deviance (RSS for Gaussian)
+  rss_full <- deviance(full)
+  rss_red  <- deviance(reduced)
+  partial_R2 <- ifelse(rss_red <= 0, NA_real_, (rss_red - rss_full) / rss_red)
+  
+  # AIC difference
+  aic_full <- AIC(full)
+  aic_red  <- AIC(reduced)
+  delta_aic <- aic_red - aic_full   # positive => full better
+  
+  # RMSE change
+  pred_red <- predict(reduced, newdata = df, type = "response")
+  rmse_red <- sqrt(mean((df$response_B - pred_red)^2))
+  delta_rmse <- rmse_red - full_rmse   # positive => removing v made RMSE worse
+  
+  # ANOVA comparison (F test)
+  an <- try(anova(reduced, full, test = "F"), silent = TRUE)
+  pval <- NA_real_; fstat <- NA_real_
+  if(!inherits(an, "try-error")) {
+    an_tbl <- broom::tidy(an)
+    if(nrow(an_tbl) >= 1) {
+      if("p.value" %in% names(an_tbl)) pval <- an_tbl$p.value[nrow(an_tbl)]
+      else if("Pr..F." %in% names(an_tbl)) pval <- an_tbl$Pr..F.[nrow(an_tbl)]
+      if("statistic" %in% names(an_tbl)) fstat <- an_tbl$statistic[nrow(an_tbl)]
+    }
+  }
+  
+  results[[v]] <- data.frame(
+    variable = v,
+    partial_R2 = partial_R2,
+    delta_AIC = delta_aic,
+    rmse_full = full_rmse,
+    rmse_reduced = rmse_red,
+    delta_RMSE = delta_rmse,
+    anova_p = pval,
+    anova_F = fstat,
+    stringsAsFactors = FALSE
+  )
+}
+
+res_df <- bind_rows(results)
+
+# Formatting and sorting
+res_df <- res_df %>%
+  arrange(desc(partial_R2)) %>%
+  mutate(
+    partial_R2 = round(partial_R2, 4),
+    delta_AIC = round(delta_AIC, 3),
+    delta_RMSE = round(delta_RMSE, 4),
+    anova_p = signif(anova_p, 3)
+  )
+
+# Print and save table
+print(res_df)
+write.csv(res_df, "covariate_explanatory_power_table_with_effectA.csv", row.names = FALSE)
+
+# ---------- importance barplot including effect_A ----------
+# Use partial R2 as main metric; include delta_AIC as label
+p_bar <- ggplot(res_df, aes(x = reorder(variable, partial_R2), y = partial_R2)) +
+  geom_col(fill = "#2b8cbe") +
+  coord_flip() +
+  geom_text(aes(label = paste0("ΔAIC=", delta_AIC)), hjust = -0.05, size = 3) +
+  labs(x = "", y = "Partial R² (variance uniquely explained)",
+       title = "Covariate explanatory power (GAM) — including DC3000 logFC (effect_A)") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 12, face = "bold"))
+
+# Expand y limit a bit to fit labels
+ylim_max <- max(res_df$partial_R2, na.rm = TRUE) * 1.25
+if(is.finite(ylim_max) && ylim_max > 0) p_bar <- p_bar + ylim(0, ylim_max)
+
+print(p_bar)
+ggsave("covariate_importance_barplot_with_effectA.png", p_bar, width = 7, height = 4, dpi = 300)
+
+# done
+message("Saved results to covariate_explanatory_power_table_with_effectA.csv and covariate_importance_barplot_with_effectA.png")
