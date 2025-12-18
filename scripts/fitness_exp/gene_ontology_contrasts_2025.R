@@ -4,18 +4,19 @@
 setwd("~/Google\ Drive/My\ Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000")
 
 #sig_genes is the output from the limmavoom file for which genes were significant in which interaction.
-result_df = read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025.csv", header = TRUE)
+#result_df = read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025.csv", header = TRUE)
+sig_results <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000/sig_results_12_2025.csv",header=TRUE)
 
-# ortholog table for possible genes
-ortholog_tab <- read.table("/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/p25c2_dc3000_ortholog_7_2_2024/p25c2_to_dc3000_noReps.csv", header = TRUE, row.names = 1, sep = ",")
 
-#!/usr/bin/env Rscript
 # go_and_heatmap_top50.R
 # Combined GO ORA + heatmap pipeline. Heatmaps limited to top 50 genes per set.
 
 # ---------------------- User settings ----------------------
-lfc_path  <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025_with_uniprot.csv"
+# lfc_path  <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_8_2025/output/sig_results_11_2025_with_uniprot.csv"
 go_map_path <- "/Users/talia/Documents/GitHub/TnSeq_Pseudomonas_Genotype/input_data/orthology/DC3000_genome_mappings/gene_ontology_mapping_uniprotkb_proteome_UP000002515_2025_07_01 (2).tsv"
+
+# On 12/17/2025, switching to this LFC file but need to triple check this file has the right mappings.
+lfc_df <- read.csv("/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000logFC_time_DC3000_vs_P25c2_12_2025.csv", header=TRUE)
 
 # Parameters
 fdr_thresh      <- 0.05

@@ -425,7 +425,7 @@ print(p1)
 
 outdir <- "/Users/talia/Library/CloudStorage/GoogleDrive-tkarasov@gmail.com/My Drive/Utah_Professorship/projects/Tnseq/compiled_trials_3_2024/data/in_planta_rbtnseq_p25c2_dc3000"
 if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot = p1, width = 9, height = 8)
+ggsave(file.path(outdir, "predictors_vs_logFC_DC3000_facet_Rlabels.pdf"), plot = p1, width = 7, height = 5)
 
 
 ##################
@@ -888,7 +888,9 @@ p_resp <- ggplot(grid, aes(x = effect_A, y = fit)) +
        title = "GAM prediction: response_B vs effect_A") +
   theme_minimal()
 print(p_resp)
-
+pdf("GAM_predicted_curve_response_vs_effect.pdf", height = 2.5, width=3.35)
+p_resp
+dev.off()
 # ---------- 3) Prepare for faster bootstraped local R^2 (Option B) ----------
 # We'll use rolling windows in terms of observation counts (nearest neighbors).
 df2 <- df %>% arrange(effect_A) %>% mutate(idx = row_number())
@@ -970,6 +972,10 @@ p_localR2 <- ggplot(res_df, aes(x = center, y = r2)) +
        title = paste0("Local R^2 (window_n=", window_n, ", step=", step, ", B=", B, ")")) +
   theme_minimal()
 print(p_localR2)
+
+pdf("local_R2_bootstrap_CI.pdf", height = 3.35, width=3.35)
+p_localR2
+dev.off()
 
 # optional: plot sample size per window
 p_n <- ggplot(res_df, aes(x = center, y = n)) + geom_line() +
@@ -1121,7 +1127,9 @@ ylim_max <- max(res_df$partial_R2, na.rm = TRUE) * 1.25
 if(is.finite(ylim_max) && ylim_max > 0) p_bar <- p_bar + ylim(0, ylim_max)
 
 print(p_bar)
-ggsave("covariate_importance_barplot_with_effectA.png", p_bar, width = 7, height = 4, dpi = 300)
-
+pdf("covariate_importance_barplot_with_effectA.pdf", p_bar, width = 3.35, height = 2.5)
+p_bar
+dev.off()
 # done
-message("Saved results to covariate_explanatory_power_table_with_effectA.csv and covariate_importance_barplot_with_effectA.png")
+message("Saved results to covariate_explanatory_power_table_with_effectA.csv and covariate_importance_barplot_with_effectA.pdf")
+
